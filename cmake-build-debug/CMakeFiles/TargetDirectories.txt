@@ -1,3 +1,0 @@
-/Users/gnilk/src/test/emu6502/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/Users/gnilk/src/test/emu6502/cmake-build-debug/CMakeFiles/edit_cache.dir
-/Users/gnilk/src/test/emu6502/cmake-build-debug/CMakeFiles/emu6502.dir

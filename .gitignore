@@ -1,0 +1,3 @@
+cmake-build-debug/
+c64/bin/buildlog.txt
+c64/bin/test.sym
