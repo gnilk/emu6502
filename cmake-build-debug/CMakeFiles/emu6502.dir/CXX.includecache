@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/Users/gnilk/src/test/emu6502/src/main.cpp
+cstdlib
+-
+cstdint
+-
+cstdio
+-
+string
+-
+map
+-
+functional
+-
+

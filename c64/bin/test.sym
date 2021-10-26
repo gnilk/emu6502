@@ -1,0 +1,2 @@
+.label start=$4000
+.label subroutine=$4014

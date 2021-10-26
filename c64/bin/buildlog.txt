@@ -1,0 +1,12 @@
+parsing
+flex pass 1
+flex pass 2
+Output pass
+Writing prg file: test.prg
+
+Memory Map
+----------
+Default-segment:
+  $4000-$4019 main
+
+Writing Symbol file: test.sym
