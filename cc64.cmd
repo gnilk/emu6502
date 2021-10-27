@@ -1,0 +1,1 @@
+java -jar c:\bin\KickAss\KickAss.jar c64\test.asm -o c64\bin\test.prg

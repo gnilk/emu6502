@@ -1,14 +1,20 @@
     * = $4000 "main"
 start:
-    lda #$01
-    sta $d020
-    lda $d020
-    sta $d021
-    jsr subroutine
-    lda #$04
-    sta $d023
-    brk 
+    lda #$f0
+    pha
+    clc
+    adc #$20
+    php
+    adc #$00
+    clc
+    plp
+    sta value
+    pla
+    sta value2
+    brk
 subroutine:
-    lda #$03
-    sta $d022
-    rts    
+
+    rts
+    * = $4100
+value: .byte 0
+value2: .byte 0

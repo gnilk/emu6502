@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <cstdarg>
 #include <map>
 #include <functional>
 
@@ -13,13 +14,32 @@ static void HexDump(const uint8_t *ptr, size_t ofs, size_t len);
 #define MAX_RAM (64*1024)
 typedef enum {
     kOpCode_BRK = 0x00,
+    kOpCode_PHP = 0x08,
+    kOpCode_CLC = 0x18,
     kOpCode_JSR = 0x20,
+    kOpCode_PLP = 0x28,
+    kOpCode_SEC = 0x38,
+    kOpCode_PHA = 0x48,
+    kOpCode_EOR_IMM = 0x49,
     kOpCode_RTS = 0x60,
+    kOpCode_PLA = 0x68,
+    kOpCode_ADC_IMM = 0x69,
     kOpCode_STA = 0x8d,
     kOpCode_NOP = 0xea,
     kOpCode_LDA_IMM = 0xa9,
+    kOpCode_CLD = 0xd8,
+    kOpCode_CLV = 0xB8,
     kOpCode_LDA_ABS = 0xad,
+    kOpCode_SED = 0xf8,
 } kCpuOperands;
+
+typedef enum {
+    kDdb_None = 0x00,
+    kDbg_MemoryRead = 0x01,
+    kDbg_MemoryWrite = 0x02,
+    kDbg_StepDisAsm = 0x04,
+    kDbg_StepCPUReg = 0x08,
+} kDebugFlags;
 
 typedef enum {
     kFlag_Carry = 0x01,
@@ -50,9 +70,16 @@ public:
     bool Step();
     const uint8_t *RAMPtr() const { return ram; }
 
+    void SetDebug(kDebugFlags flag, bool enable);
+
 protected:
-    void SetALU(uint8_t value);
+    void RefreshStatusFromALU(bool updateNeg = false);
+    bool IsStatusSet(kCpuFlags flag);
     void UpdateStatus(uint8_t setFlags, bool enable);
+    void SetStepResult(const char *format, ...);
+
+    static const std::string CPU::ToBinaryU8(const uint8_t byte);
+
     uint8_t Fetch8();
     uint16_t Fetch16();
     uint32_t Fetch32();
@@ -63,7 +90,9 @@ protected:
     void WriteU16(uint32_t index, uint16_t value);
     void WriteU32(uint32_t index, uint32_t value);
 
+    void Push8(uint8_t value);
     void Push16(uint16_t value);
+    uint8_t Pop8();
     uint16_t Pop16();
 
 private:
@@ -73,8 +102,12 @@ private:
     uint32_t reg_a;
     uint32_t reg_x;
     uint32_t reg_y;
+    // RAM Memory
     uint8_t *ram;
 
+    // Not releated to 6502
+    uint8_t debugFlags;
+    std::string lastStepResult;
     std::map<uint8_t, CPUInstruction > instructions;
 };
 
@@ -86,16 +119,116 @@ void CPU::Initialize() {
         free(ram);
     }
     ram = (uint8_t *)malloc(MAX_RAM);
+    memset(ram, 0, MAX_RAM);
     ip = 0;
     sp = 0x1ff; // stack pointer, points to first available byte..
     status = 0x00;
+
+    debugFlags = kDebugFlags::kDdb_None;
+
+    instructions[kOpCode_CLC] = {
+            kOpCode_CLC, 1, "CLC", [this](){
+                UpdateStatus(kCpuFlags::kFlag_Carry, false);
+                SetStepResult("CLC");
+            }
+    };
+
+    instructions[kOpCode_SEC] = {
+            kOpCode_SEC, 1, "SEC", [this](){
+                UpdateStatus(kCpuFlags::kFlag_Carry, true);
+                SetStepResult("SEC");
+            }
+    };
+
+    instructions[kOpCode_PHP] = {
+            kOpCode_PHP, 1, "PHP", [this](){
+                Push8(status);
+                SetStepResult("PHP");
+        }
+    };
+
+    instructions[kOpCode_PLP] = {
+            kOpCode_PLP, 1, "PLP", [this](){
+                status = Pop8();
+                SetStepResult("PLP");
+            }
+    };
+
+    instructions[kOpCode_PHA] = {
+            kOpCode_PHA, 1, "PHA", [this](){
+                Push8(reg_a);
+                SetStepResult("PHA");
+            }
+    };
+
+    instructions[kOpCode_PLA] = {
+            kOpCode_PLA, 1, "PLA", [this](){
+                reg_a = Pop8();
+                RefreshStatusFromALU(true);
+                SetStepResult("PLA");
+            }
+    };
+
+
+    instructions[kOpCode_CLD] = {
+            kOpCode_CLD, 1, "CLD", [this](){
+                UpdateStatus(kCpuFlags::kFlag_DecimalMode, false);
+                SetStepResult("CLD");
+            }
+    };
+
+    instructions[kOpCode_SED] = {
+            kOpCode_SED, 1, "SED", [this](){
+                UpdateStatus(kCpuFlags::kFlag_DecimalMode, true);
+                SetStepResult("SED");
+            }
+    };
+
+    instructions[kOpCode_CLV] = {
+            kOpCode_CLV, 1, "CLV", [this](){
+                UpdateStatus(kCpuFlags::kFlag_Overflow, false);
+                SetStepResult("CLV");
+            }
+    };
+
+
+    instructions[kOpCode_EOR_IMM] = {
+            kOpCode_EOR_IMM, 2, "EOR", [this](){
+                uint8_t val = Fetch8();
+                reg_a ^= val;
+                RefreshStatusFromALU(true);
+                SetStepResult("EOR #$%02x", val);
+            }
+    };
+
+
+    instructions[kOpCode_ADC_IMM] = {
+            kOpCode_ADC_IMM, 2, "CLC", [this](){
+                uint8_t val = Fetch8();
+                reg_a += val;
+                reg_a += IsStatusSet(kCpuFlags::kFlag_Carry)?1:0;
+                if (reg_a > 255) {
+                    UpdateStatus(kCpuFlags::kFlag_Carry, true);
+                    // TODO: Need to understand the overflow flag a bit better...
+                    // UpdateStatus(kCpuFlags::kFlag_Overflow, true);
+                    reg_a &= 0xff;
+                }
+
+                // TODO: Verify if carry should be cleared in case we don't wrap..
+
+                RefreshStatusFromALU();
+
+                SetStepResult("ADC #$%02x (C:%d)",val, (status & kFlag_Carry)?1:0);
+            }
+    };
 
 
     // Setup instruction set...
     instructions[kOpCode_LDA_IMM] = {
             kOpCode_LDA_IMM, 2, "LDA", [this](){
-                SetALU(Fetch8());
-                printf("LDA #$%02x\n", reg_a);
+                reg_a = Fetch8();
+                RefreshStatusFromALU();
+                SetStepResult("LDA #$%02x", reg_a);
             }
     };
 
@@ -103,8 +236,9 @@ void CPU::Initialize() {
             kOpCode_LDA_ABS, 3, "LDA", [this](){
                 uint16_t ofs = Fetch16();
                 uint8_t value = ReadU8(ofs);
-                SetALU(value);
-                printf("LDA $%04x  ($%04x => $02x)\n", ofs, ofs, value);
+                reg_a = value;
+                RefreshStatusFromALU();
+                SetStepResult("LDA $%04x  ($%04x => $02x)", ofs, ofs, value);
             }
     };
 
@@ -112,7 +246,7 @@ void CPU::Initialize() {
             kOpCode_STA, 3, "STA", [this](){
                 uint16_t ofs = Fetch16();
                 WriteU8(ofs, reg_a);
-                printf("STA $%04x (#$%02x => $%04x)\n", ofs, reg_a, ofs);
+                SetStepResult("STA $%04x (#$%02x => $%04x)", ofs, reg_a, ofs);
             }
     };
 
@@ -120,7 +254,7 @@ void CPU::Initialize() {
             kOpCode_JSR, 3, "JSR", [this](){
                 uint16_t ofs = Fetch16();
                 uint16_t ipReturn = ip;
-                printf("JSR $%04x\n", ofs);
+                SetStepResult("JSR $%04x", ofs);
                 ip = ofs;
                 Push16(ipReturn);
             }
@@ -128,7 +262,7 @@ void CPU::Initialize() {
     instructions[kOpCode_RTS] = {
             kOpCode_RTS,1,"RTS", [this](){
                 uint16_t ofs = Pop16();
-                printf("RTS  (ip will be: $%04x)\n", ofs);
+                SetStepResult("RTS  (ip will be: $%04x)", ofs);
                 ip = ofs;
             }
     };
@@ -137,6 +271,10 @@ void CPU::Initialize() {
 void CPU::Reset(uint32_t ipAddr) {
     ip = ipAddr;
     sp = 0x1ff; // stack pointer, points to first available byte..
+    reg_a = 0xaa;
+    reg_x = 0x00;
+    reg_y = 0x00;
+    status = 0x00;      // should be 0x16 according to: https://www.c64-wiki.com/wiki/Processor_Status_Register
 }
 
 void CPU::Load(const uint8_t *from, const uint32_t offset, uint32_t nbytes) {
@@ -147,34 +285,93 @@ void CPU::Load(const uint8_t *from, const uint32_t offset, uint32_t nbytes) {
 bool CPU::Step() {
     bool res = true;
     uint8_t opcode = Fetch8();
-    printf("OPCode: $%02x\n", opcode);
     if (instructions.find(opcode) != instructions.end()) {
         instructions[opcode].exec();
     } else {
         switch (opcode) {
             case kOpCode_BRK :
                 res = false;
+                SetStepResult("BRK");
                 break;
             case kOpCode_NOP :
                 // Do nothing...
+                SetStepResult("NOP");
                 break;
             default:
+                SetStepResult("ERR: Unknown OPCode $%02x at address $%04x", opcode, ip-1);
                 res = false;
         }
+    }
+    if(debugFlags & kDebugFlags::kDbg_StepDisAsm) {
+        printf("%s\n", lastStepResult.c_str());
+    }
+    if (debugFlags & kDebugFlags::kDbg_StepCPUReg) {
+        printf("IP=$%04x SP=$%02x A=$%02x X=$%02x Y=$%02x P=%s (NV-BDIZC)\n",
+               ip, sp, reg_a, reg_x, reg_y, ToBinaryU8(status).c_str());
     }
     return res;
 }
 
-void CPU::SetALU(uint8_t value) {
-    reg_a = value;
+const std::string CPU::ToBinaryU8(const uint8_t byte) {
 
+    std::string str;
+    // Want int here, so we decrement below zero and thus break the loop...
+    for(int i=7;i>=0;i--) {
+        if (byte & (1<<i)) {
+            str += '1';
+        } else {
+            str += '0';
+        }
+    }
+    //00000010
+    //12345678
+    return str;
+}
+
+void CPU::SetDebug(kDebugFlags flag, bool enable) {
+    if (enable) {
+        debugFlags |= flag;
+    } else {
+        debugFlags &= flag ^ 0xff;
+    }
+}
+
+
+void CPU::SetStepResult(const char *format, ...) {
+    va_list values;
+    va_start(values, format);
+    char outstr[256];
+    vsnprintf(outstr, 256, format, values);
+    va_end(values);
+
+    lastStepResult = std::string(outstr);
+
+}
+
+void CPU::RefreshStatusFromALU(bool updateNeg) {
     if (!reg_a) {
         UpdateStatus(kFlag_Zero, true);
     } else {
         UpdateStatus(kFlag_Zero, false);
     }
+
+    // TODO: need argument if update neg
+    if (updateNeg) {
+        if (reg_a & 0x80) {
+            UpdateStatus(kFlag_Negative, true);
+        } else {
+            // Clear???
+            UpdateStatus(kFlag_Negative, false);
+        }
+    }
 }
 
+bool CPU::IsStatusSet(kCpuFlags flag) {
+    if (status & flag) {
+        return true;
+    }
+    return false;
+}
 void CPU::UpdateStatus(uint8_t setFlags, bool enable) {
     if (enable) {
         status |= setFlags;
@@ -201,10 +398,20 @@ uint32_t CPU::Fetch32() {
     return res;
 }
 // Stack helpers
+void CPU::Push8(uint8_t value) {
+    WriteU8(sp, value);
+    sp -= 1;    // Advance stack to next available
+}
+
 void CPU::Push16(uint16_t value) {
     sp -= 1;    // Make room for one more value - we are pushing 16 bits and the stack points to first available
     WriteU16(sp, value);
     sp -= 1;    // Advance stack to next available
+}
+uint8_t CPU::Pop8() {
+    uint8_t value = ReadU8(sp+1);
+    sp += sizeof(uint8_t);
+    return value;
 }
 
 uint16_t CPU::Pop16() {
@@ -215,34 +422,46 @@ uint16_t CPU::Pop16() {
 
 
 uint8_t CPU::ReadU8(uint32_t index) {
-    printf("[CPU] Read8 from ofs: 0x%04x (%d)\n", index, index);
+    if(debugFlags & kDebugFlags::kDbg_MemoryRead) {
+        printf("[CPU] Read8 0x%02x from ofs: 0x%04x (%d)\n", ram[index], index, index);
+    }
     return ram[index];
 }
 uint16_t CPU::ReadU16(uint32_t index) {
-    printf("[CPU] Read16 from ofs: 0x%04x (%d)\n", index, index);
     auto ptr = reinterpret_cast<uint16_t *>(&ram[index]);
+    if(debugFlags & kDebugFlags::kDbg_MemoryRead) {
+        printf("[CPU] Read16  0x%04x from ofs: 0x%04x (%d)\n", *ptr, index, index);
+    }
     return *ptr;
 }
 uint32_t CPU::ReadU32(uint32_t index) {
-    printf("[CPU] Read32 from ofs: 0x%04x (%d)\n", index, index);
     auto ptr = reinterpret_cast<uint32_t *>(&ram[index]);
+    if(debugFlags & kDebugFlags::kDbg_MemoryRead) {
+        printf("[CPU] Read32 0x%08x from ofs: 0x%04x (%d)\n", *ptr, index, index);
+    }
     return *ptr;
 }
 
 void CPU::WriteU8(uint32_t index, uint8_t value) {
-    printf("[CPU] WriteU8 0x%02x to ofs: 0x%04x (%d)\n", value, index, index);
+    if(debugFlags & kDebugFlags::kDbg_MemoryWrite) {
+        printf("[CPU] WriteU8 0x%02x to ofs: 0x%04x (%d)\n", value, index, index);
+    }
     ram[index] = value;
 }
 
 
 void CPU::WriteU16(uint32_t index, uint16_t value) {
-    printf("[CPU] WriteU16 0x%04x to ofs: 0x%04x (%d)\n", value, index, index);
+    if(debugFlags & kDebugFlags::kDbg_MemoryWrite) {
+        printf("[CPU] WriteU16 0x%04x to ofs: 0x%04x (%d)\n", value, index, index);
+    }
     auto *ptr = reinterpret_cast<uint16_t *>(&ram[index]);
     *ptr = value;
 }
 
 void CPU::WriteU32(uint32_t index, uint32_t value) {
-    printf("[CPU] WriteU32 0x%08x to ofs: 0x%04x (%d)\n", value, index, index);
+    if(debugFlags & kDebugFlags::kDbg_MemoryWrite) {
+        printf("[CPU] WriteU32 0x%08x to ofs: 0x%04x (%d)\n", value, index, index);
+    }
     auto *ptr = reinterpret_cast<uint32_t *>(&ram[index]);
     *ptr = value;
 }
@@ -327,8 +546,10 @@ int main(int argc, char **argv) {
 
     // Reset CPU and set instruction pointer offset..
     cpu.Reset(offset);
-    HexDump(cpu.RAMPtr(), offset, 32);
+    cpu.SetDebug(kDebugFlags::kDbg_StepDisAsm, true);
+    cpu.SetDebug(kDebugFlags::kDbg_StepCPUReg, true);
+    HexDump(cpu.RAMPtr(), 0x4100, 16);
     while(cpu.Step()) {}
-    HexDump(cpu.RAMPtr(), 0xd000, 48);
+    HexDump(cpu.RAMPtr(), 0x4100, 16);
     return 0;
 }
