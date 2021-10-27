@@ -131,11 +131,10 @@ void CPU::Initialize() {
     instructions[kCpuOperands::PLA] = {
             kCpuOperands::PLA, 1, "PLA", [this](){
                 reg_a = Pop8();
-                RefreshStatusFromALU(true);
+                RefreshStatusFromALU();
                 SetStepResult("PLA");
             }
     };
-
 
     instructions[kCpuOperands::CLD] = {
             kCpuOperands::CLD, 1, "CLD", [this](){
@@ -161,47 +160,96 @@ void CPU::Initialize() {
             }
     };
 
+    instructions[kCpuOperands::CLI] = {
+            kCpuOperands::CLI, 1, "CLI", [this](){
+                //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
+                mstatus.set(CpuFlag::InterruptDisable, false);
+                SetStepResult("CLI");
+            }
+    };
+
+    instructions[kCpuOperands::SEI] = {
+            kCpuOperands::SEI, 1, "SEI", [this](){
+                //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
+                mstatus.set(CpuFlag::InterruptDisable, true);
+                SetStepResult("SEI");
+            }
+    };
+
+
+    instructions[kCpuOperands::ORA_IMM] = {
+            kCpuOperands::ORA_IMM, 2, "ORA", [this](){
+                uint8_t val = Fetch8();
+                reg_a |= val;
+                RefreshStatusFromALU();
+                SetStepResult("ORA #$%02x", val);
+            }
+    };
+
+    instructions[kCpuOperands::AND_IMM] = {
+            kCpuOperands::AND_IMM, 2, "AND", [this](){
+                uint8_t val = Fetch8();
+                reg_a &= val;
+                RefreshStatusFromALU();
+                SetStepResult("AND #$%02x", val);
+            }
+    };
 
     instructions[kCpuOperands::EOR_IMM] = {
             kCpuOperands::EOR_IMM, 2, "EOR", [this](){
                 uint8_t val = Fetch8();
                 reg_a ^= val;
-                RefreshStatusFromALU(true);
+                RefreshStatusFromALU();
                 SetStepResult("EOR #$%02x", val);
             }
     };
 
 
     instructions[kCpuOperands::ADC_IMM] = {
-            kCpuOperands::ADC_IMM, 2, "CLC", [this](){
+            kCpuOperands::ADC_IMM, 2, "SBC", [this](){
                 uint8_t val = Fetch8();
                 reg_a += val;
-                //reg_a += IsStatusSet(kCpuFlags::kFlag_Carry)?1:0;
                 reg_a += mstatus[CpuFlag::Carry]?1:0;
                 if (reg_a > 255) {
-                    //UpdateStatus(kCpuFlags::kFlag_Carry, true);
                     mstatus.set(CpuFlag::Carry, true);
-                    // TODO: Need to understand the overflow flag a bit better...
-                    // UpdateStatus(kCpuFlags::kFlag_Overflow, true);
                     reg_a &= 0xff;
                 } else {
                     mstatus.set(CpuFlag::Carry, false);
                 }
 
-                // TODO: Verify if carry should be cleared in case we don't wrap..
+                // TODO: V flag in Status
 
                 RefreshStatusFromALU();
-
                 SetStepResult("ADC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
             }
     };
 
 
-    // Setup instruction set...
+    instructions[kCpuOperands::SBC_IMM] = {
+            kCpuOperands::SBC_IMM, 2, "SBC", [this](){
+                uint8_t val = Fetch8();
+                reg_a -= val;
+                reg_a -= mstatus[CpuFlag::Carry]?0:1;
+
+                if (reg_a > 0) {
+                    mstatus.set(CpuFlag::Carry, true);
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
+                    reg_a &= 0xff;
+                }
+
+                // TODO: V flag in Status
+
+                RefreshStatusFromALU();
+                SetStepResult("SBC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
+            }
+    };
+
+
     instructions[kCpuOperands::LDA_IMM] = {
             kCpuOperands::LDA_IMM, 2, "LDA", [this](){
                 reg_a = Fetch8();
-                RefreshStatusFromALU(true);
+                RefreshStatusFromALU();
                 SetStepResult("LDA #$%02x", reg_a);
             }
     };
@@ -335,25 +383,22 @@ void CPU::SetStepResult(const char *format, ...) {
 
 }
 
-void CPU::RefreshStatusFromALU(bool updateNeg) {
+// This will refresh the Zero/Neg flags in the status register...
+void CPU::RefreshStatusFromALU() {
     if (!reg_a) {
         //UpdateStatus(kFlag_Zero, true);
         mstatus.set(CpuFlag::Zero, true);
     } else {
-        //UpdateStatus(kFlag_Zero, false);
         mstatus.set(CpuFlag::Zero, false);
     }
 
-    // TODO: need argument if update neg
-    if (updateNeg) {
-        if (reg_a & 0x80) {
-            //UpdateStatus(kFlag_Negative, true);
-            mstatus.set(CpuFlag::Negative, true);
-        } else {
-            // Clear???
-            //UpdateStatus(kFlag_Negative, false);
-            mstatus.set(CpuFlag::Negative, false);
-        }
+    if (reg_a & 0x80) {
+        //UpdateStatus(kFlag_Negative, true);
+        mstatus.set(CpuFlag::Negative, true);
+    } else {
+        // Clear???
+        //UpdateStatus(kFlag_Negative, false);
+        mstatus.set(CpuFlag::Negative, false);
     }
 }
 

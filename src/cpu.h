@@ -18,21 +18,26 @@
 enum class kCpuOperands : uint8_t {
     BRK = 0x00,
     PHP = 0x08,
+    ORA_IMM = 0x09,
     CLC = 0x18,
     JSR = 0x20,
     PLP = 0x28,
+    AND_IMM = 0x29,
     SEC = 0x38,
     PHA = 0x48,
     EOR_IMM = 0x49,
+    CLI = 0x48,
     RTS = 0x60,
     PLA = 0x68,
     ADC_IMM = 0x69,
+    SEI = 0x78,
     STA = 0x8d,
     NOP = 0xea,
     LDA_IMM = 0xa9,
     CLD = 0xd8,
     CLV = 0xB8,
     LDA_ABS = 0xad,
+    SBC_IMM = 0xe9,
     SED = 0xf8,
 };
 
@@ -159,7 +164,7 @@ public:
     void SetDebug(kDebugFlags flag, bool enable);
 
 protected:
-    void RefreshStatusFromALU(bool updateNeg = true);
+    void RefreshStatusFromALU();
     void SetStepResult(const char *format, ...);
 
     static const std::string ToBinaryU8(uint8_t byte);
@@ -183,7 +188,7 @@ private:
     CpuFlags mstatus;
     uint32_t ip;    // instruction pointer, index in RAM
     uint32_t sp;    // stack point, index in RAM
-    uint32_t reg_a;
+    int32_t reg_a;
     uint32_t reg_x;
     uint32_t reg_y;
     // RAM Memory
