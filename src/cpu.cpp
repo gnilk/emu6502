@@ -73,6 +73,9 @@ void CPU::Initialize() {
     //status = 0x00;
     mstatus.reset();
 
+    // Not using this is compliant with VICE...
+    // mstatus.set(CpuFlag::Unused);
+
     debugFlags = kDebugFlags::None;
 
     //
@@ -96,8 +99,14 @@ void CPU::Initialize() {
 
     instructions[kCpuOperands::PHP] = {
             kCpuOperands::PHP, 1, "PHP", [this](){
-                //Push8(status);
-                Push8(mstatus.raw());
+                // According to the emulators this is not set on reset
+                // but in the data-sheet it is said to be '1'
+                // Note: In VICE the BRK flag is also set -
+                auto current = mstatus;
+                current.set(CpuFlag::Unused);
+                current.set(CpuFlag::BreakCmd);
+
+                Push8(current.raw());
                 SetStepResult("PHP");
             }
     };
@@ -105,7 +114,9 @@ void CPU::Initialize() {
     instructions[kCpuOperands::PLP] = {
             kCpuOperands::PLP, 1, "PLP", [this](){
                 //status = Pop8();
-                mstatus = Pop8();
+                auto tmp = static_cast<CpuFlags>(Pop8());
+                tmp.set(CpuFlag::Unused, false);
+                mstatus = tmp;
                 SetStepResult("PLP");
             }
     };
@@ -173,6 +184,8 @@ void CPU::Initialize() {
                     // TODO: Need to understand the overflow flag a bit better...
                     // UpdateStatus(kCpuFlags::kFlag_Overflow, true);
                     reg_a &= 0xff;
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
                 }
 
                 // TODO: Verify if carry should be cleared in case we don't wrap..
@@ -276,8 +289,12 @@ bool CPU::Step() {
         printf("%s\n", lastStepResult.c_str());
     }
     if ((debugFlags & kDebugFlags::StepCPUReg) == kDebugFlags::StepCPUReg) {
-        printf("IP=$%04x SP=$%02x A=$%02x X=$%02x Y=$%02x P=%s (NV-BDIZC)\n",
-               ip, sp, reg_a, reg_x, reg_y, ToBinaryU8(mstatus.raw()).c_str());
+        printf("ADDR AR XR YR SP 01 NV-BDIZC\n");
+        printf("%04x %02x %02x %02x %02x %02x %s\n",
+               ip, reg_a, reg_x, reg_y, sp & 0xff, ReadU8(0x01), ToBinaryU8(mstatus.raw()).c_str());
+
+        // Make this line optional..
+        printf("\n");
     }
     return res;
 }

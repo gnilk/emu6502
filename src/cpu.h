@@ -159,7 +159,7 @@ public:
     void SetDebug(kDebugFlags flag, bool enable);
 
 protected:
-    void RefreshStatusFromALU(bool updateNeg = false);
+    void RefreshStatusFromALU(bool updateNeg = true);
     void SetStepResult(const char *format, ...);
 
     static const std::string ToBinaryU8(uint8_t byte);

@@ -1,2 +1,3 @@
 .label start=$4000
-.label subroutine=$4014
+.label subroutine=$4006
+.label value=$4007
