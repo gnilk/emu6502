@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(emu6502)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 
 # this compiles the c64 binary through kick-assembler...

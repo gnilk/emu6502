@@ -1,20 +1,39 @@
     * = $4000 "main"
 start:
-    lda #$f0
-    pha
+
+    tay
+    iny
+    inx
+
     clc
-    adc #$20
+    sec
+    cli
+    sei
+    tya
+    clv
+    cld
+    sed
+
     php
-    adc #$00
-    clc
     plp
-    sta value
+    pha
     pla
-    sta value2
+
+    lda #$01
+    bpl subroutine
+    rol
+    bmi subroutine
+    sta $4100
+    beq subroutine
+    rol
+    bne subroutine
+    sta $4101
+    bcc subroutine
+    rol
+    bcs subroutine
+    sta $4101
     brk
 subroutine:
 
     rts
     * = $4100
-value: .byte 0
-value2: .byte 0

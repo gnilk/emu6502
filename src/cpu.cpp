@@ -131,7 +131,7 @@ void CPU::Initialize() {
     instructions[kCpuOperands::PLA] = {
             kCpuOperands::PLA, 1, "PLA", [this](){
                 reg_a = Pop8();
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("PLA");
             }
     };
@@ -181,7 +181,7 @@ void CPU::Initialize() {
             kCpuOperands::ORA_IMM, 2, "ORA", [this](){
                 uint8_t val = Fetch8();
                 reg_a |= val;
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("ORA #$%02x", val);
             }
     };
@@ -190,7 +190,7 @@ void CPU::Initialize() {
             kCpuOperands::AND_IMM, 2, "AND", [this](){
                 uint8_t val = Fetch8();
                 reg_a &= val;
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("AND #$%02x", val);
             }
     };
@@ -199,7 +199,7 @@ void CPU::Initialize() {
             kCpuOperands::EOR_IMM, 2, "EOR", [this](){
                 uint8_t val = Fetch8();
                 reg_a ^= val;
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("EOR #$%02x", val);
             }
     };
@@ -219,7 +219,7 @@ void CPU::Initialize() {
 
                 // TODO: V flag in Status
 
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("ADC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
             }
     };
@@ -240,17 +240,100 @@ void CPU::Initialize() {
 
                 // TODO: V flag in Status
 
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("SBC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
             }
     };
 
+    instructions[kCpuOperands::TAY] = {
+            kCpuOperands::TAY, 1, "TAY", [this](){
+                reg_y = reg_a;
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("TAY");
+            }
+    };
+
+    instructions[kCpuOperands::TYA] = {
+            kCpuOperands::TYA, 1, "TYA", [this](){
+                reg_a = reg_y;
+                RefreshStatusFromValue(reg_a);
+                SetStepResult("TYA");
+            }
+    };
+
+    instructions[kCpuOperands::TXA] = {
+            kCpuOperands::TXA, 1, "TXA", [this](){
+                reg_a = reg_x;
+                RefreshStatusFromValue(reg_a);
+                SetStepResult("TXA");
+            }
+    };
+
+    instructions[kCpuOperands::TAX] = {
+            kCpuOperands::TAX, 1, "TAX", [this](){
+                reg_x = reg_a;
+                RefreshStatusFromValue(reg_a);
+                SetStepResult("TAX");
+            }
+    };
+
+    instructions[kCpuOperands::DEY] = {
+            kCpuOperands::DEY, 1, "DEY", [this](){
+                auto old_y = reg_y;
+                reg_y = (reg_y - 1) & 255;
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("DEY (#$%02x -> #$%02x)", old_y, reg_y);
+            }
+    };
+
+    instructions[kCpuOperands::DEX] = {
+            kCpuOperands::DEY, 1, "DEX", [this](){
+                auto old_x = reg_x;
+                reg_x = (reg_x - 1) & 255;
+                RefreshStatusFromValue(reg_x);
+                SetStepResult("DEX (#$%02x -> #$%02x)", old_x, reg_x);
+            }
+    };
+
+    instructions[kCpuOperands::INY] = {
+            kCpuOperands::INY, 1, "INY", [this](){
+                auto old_y = reg_y;
+                reg_y = (reg_y + 1) & 255;
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("INY (#$%02x -> #$%02x)", old_y, reg_y);
+            }
+    };
+
+    instructions[kCpuOperands::INX] = {
+            kCpuOperands::INX, 1, "INX", [this](){
+                auto old_y = reg_x;
+                reg_x = (reg_x + 1) & 255;
+                RefreshStatusFromValue(reg_x);
+                SetStepResult("INX (#$%02x -> #$%02x)", old_y, reg_x);
+            }
+    };
 
     instructions[kCpuOperands::LDA_IMM] = {
             kCpuOperands::LDA_IMM, 2, "LDA", [this](){
                 reg_a = Fetch8();
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("LDA #$%02x", reg_a);
+            }
+    };
+
+    instructions[kCpuOperands::LDX_IMM] = {
+            kCpuOperands::LDX_IMM, 2, "LDX", [this](){
+                reg_x = Fetch8();
+                RefreshStatusFromValue(reg_x);
+                SetStepResult("LDX #$%02x", reg_x);
+            }
+    };
+
+    instructions[kCpuOperands::LDY_IMM] = {
+            kCpuOperands::LDY_IMM, 2, "LDY", [this](){
+                reg_y = Fetch8();
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("LDY #$%02x", reg_y);
             }
     };
 
@@ -259,7 +342,7 @@ void CPU::Initialize() {
                 uint16_t ofs = Fetch16();
                 uint8_t value = ReadU8(ofs);
                 reg_a = value;
-                RefreshStatusFromALU();
+                RefreshStatusFromValue(reg_a);
                 SetStepResult("LDA $%04x  ($%04x => $02x)", ofs, ofs, value);
             }
     };
@@ -308,6 +391,8 @@ void CPU::Load(const uint8_t *from, uint32_t offset, uint32_t nbytes) {
 bool CPU::Step() {
     bool res = true;
 
+    return TryDecode2();
+
     // TODO: Static cast here is probably wrong...
     kCpuOperands opcode = static_cast<kCpuOperands>(Fetch8());
     if (instructions.find(opcode) != instructions.end()) {
@@ -347,6 +432,257 @@ bool CPU::Step() {
     return res;
 }
 
+#define OPCODE_MASK_BASE     (0b00000011)
+#define OPCODE_MASK_ADDRMODE (0b00011100)
+#define OPCODE_MASK_EXT      (0b11100000)
+
+
+struct ascOperandSzAddr {
+    static const size_t Invalid      = 0;    // Invalid operand size
+    static const size_t Immediate    = 2;    // Immediate mode
+    static const size_t Absolute     = 3;    // Absolute
+    static const size_t AbsoluteIndX = 3;    // Absolute
+    static const size_t AbsoluteIndY = 3;    // Absolute
+    static const size_t Zeropage     = 2;    // Zeropage
+    static const size_t ZeropageX    = 2;    // Zeropage,x
+    static const size_t ZeroPageIndX = 2;    // (Zeropage),x
+    static const size_t ZeroPageIndY = 2;    // (Zeropage),y
+    static const size_t Accumulator  = 1;    // Directly affecting accumulator
+};
+
+enum class OperandSzAddr : uint8_t {
+    Invalid      = 0,    // Invalid operand size
+    Immediate    = 2,    // Immediate mode
+    Absolute     = 3,    // Absolute
+    AbsoluteIndX = 3,    // Absolute
+    AbsoluteIndY = 3,    // Absolute
+    Zeropage     = 2,    // Zeropage
+    ZeropageX    = 2,    // Zeropage,x
+    ZeroPageIndX = 2,    // (Zeropage),x
+    ZeroPageIndY = 2,    // (Zeropage),y
+    Accumulator  = 1,    // Directly affecting accumulator
+};
+
+
+struct OperandGroup {
+    [[nodiscard]] const std::string &Name(uint8_t idx) const { return names[idx]; }
+    [[nodiscard]] OperandSzAddr Size(uint8_t idx) const { return sizes[idx]; }
+
+    std::string names[8];
+    OperandSzAddr sizes[8];
+};
+
+static OperandGroup opGroup01={
+    .names = {"ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"},
+    .sizes = {
+            OperandSzAddr::ZeroPageIndX,
+            OperandSzAddr::Zeropage,
+            OperandSzAddr::Immediate,
+            OperandSzAddr::Absolute,
+            OperandSzAddr::ZeroPageIndY,
+            OperandSzAddr::ZeropageX,
+            OperandSzAddr::AbsoluteIndY,
+            OperandSzAddr::AbsoluteIndY,
+    }
+};
+static OperandGroup opGroup10={
+        .names = {"ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",},
+        .sizes = {
+                OperandSzAddr::Immediate,       // 000
+                OperandSzAddr::Zeropage,        // 001
+                OperandSzAddr::Accumulator,     // 010
+                OperandSzAddr::AbsoluteIndY,    // 011
+                OperandSzAddr::Invalid,         // 100      INVALID
+                OperandSzAddr::ZeropageX,       // 101
+                OperandSzAddr::Invalid,         // 110      INVALID
+                OperandSzAddr::AbsoluteIndX,    // 111
+        }
+};
+
+static OperandGroup opGroup00={
+        .names = {"---", "BIT", "JMP", "JMP", "STY", "LDY", "CPY", "CPX", },
+        .sizes = {
+                OperandSzAddr::Immediate,       // 000
+                OperandSzAddr::Zeropage,        // 001
+                OperandSzAddr::Invalid,         // 010      INVALID
+                OperandSzAddr::AbsoluteIndY,    // 011
+                OperandSzAddr::Invalid,         // 100      INVALID
+                OperandSzAddr::ZeropageX,       // 101
+                OperandSzAddr::Invalid,         // 110      INVALID
+                OperandSzAddr::AbsoluteIndX,    // 111
+        }
+};
+
+
+
+bool CPU::TryDecode2() {
+    bool res = true;
+
+    uint8_t incoming = Fetch8();
+    if (incoming == 0x00) return false;
+
+    // Handle instructions which are a bit odd...
+    if ((incoming & 0x0f) == 0x08) {
+        if ((incoming & 0x10) == 0x10) {
+            // clear flags
+            static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
+
+            auto idxInstr = incoming >> 5;
+            printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+
+
+            return true;
+        } else if ((incoming & 0xf0) < 0x70) {
+            static std::string names[]={"PHP", "PLP", "PHA", "PLA"};
+
+            auto idxInstr = (incoming >> 5);
+
+            // Push
+            printf("%s (%d, %02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+            return true;
+        } else if ((incoming & 0xf0) >= 0x80) {
+            static std::string names[] = {"TAY", "INY", "INX"};
+
+            auto idxInstr = ((incoming >> 5) & 0x03) - 1;
+
+            printf("%s incoming: %02x - (%d, %02x) - %s\n", names[idxInstr].c_str(), incoming, idxInstr, idxInstr,
+                   ToBinaryU8(idxInstr).c_str());
+            return true;
+        }
+        printf("Unsupported op code: %02x\n", incoming);
+    }
+
+    // Handle special stuff first
+    if ((incoming &0x10) == 0x10) {
+        printf("BRANCH\n");
+        Fetch8();
+        return true;
+    }
+    // Now handle the following...
+    // JSR RTI	RTS
+    // 20  40	60
+    if (incoming == 0x20) {
+        printf("JSR");
+        Fetch8();
+        Fetch8();
+        return true;
+    }
+
+
+
+    uint8_t op_base = incoming & OPCODE_MASK_BASE;
+    uint8_t addrmode = incoming & OPCODE_MASK_ADDRMODE;
+    uint8_t addrmode_idx = addrmode >> 2;
+    uint8_t op_ext = incoming & OPCODE_MASK_EXT;
+    uint8_t op_ext_idx = op_ext >> 5;
+
+
+    static OperandGroup *opGroups[4]={
+            nullptr,
+            &opGroup01,
+            &opGroup10,
+            nullptr
+    };
+
+    OperandGroup *opGroup = opGroups[op_base];
+    if (opGroup == nullptr) {
+        printf("Emulation of opcode %02x not implemented\n", incoming);
+        exit(1);
+    }
+    const std::string &name = opGroup->Name(op_ext_idx);
+    auto szOperand = to_underlying(opGroup->Size(addrmode_idx));
+    printf("%s, sz: %d\n", name.c_str(), szOperand);
+    if (szOperand > 1) {
+        // Fetch remaining...
+        for (int i=0;i<szOperand-1;i++) {
+            Fetch8();
+        }
+    }
+    return true;
+
+
+//    //
+//    // Operand Group 1
+//    //
+//    static std::string base_01_ext_class_operands[]={
+//            "ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"
+//    };
+//    // Size besides the op-code
+//    /*
+//    bbb	addressing mode
+//    000	(zero page,X)
+//    001	zero page
+//    010	#immediate
+//    011	absolute
+//    100	(zero page),Y
+//    101	zero page,X
+//    110	absolute,Y
+//    111	absolute,X
+//     */
+//    static uint8_t base_01_ext_sz_operand[8] {
+//        OperandSzAddr::ZeroPageIndX,
+//        OperandSzAddr::Zeropage,
+//        OperandSzAddr::Immediate,
+//        OperandSzAddr::Absolute,
+//        OperandSzAddr::ZeroPageIndY,
+//        OperandSzAddr::ZeropageX,
+//        OperandSzAddr::AbsoluteIndY,
+//        OperandSzAddr::AbsoluteIndY,
+//    };
+//
+//    static std::string base_10_ext_class_operands[]={
+//            "ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",
+//    };
+//
+//    /*
+//        bbb	addressing mode
+//        000	#immediate
+//        001	zero page
+//        010	accumulator
+//        011	absolute
+//        101	zero page,X
+//        111	absolute,X
+//     */
+//    static uint8_t base_10_ext_sz_operand[8] {
+//        OperandSzAddr::Immediate,
+//        OperandSzAddr::Zeropage,
+//        OperandSzAddr::Accumulator,
+//        OperandSzAddr::AbsoluteIndY,
+//        0,
+//        OperandSzAddr::ZeropageX,
+//        0,
+//        OperandSzAddr::AbsoluteIndX,
+//    };
+//
+//
+//    static std::string base_00_ext_class_operands[]={
+//            "---", "BIT", "JMP", "JMP", "STY", "LDY", "CPY", "CPX",
+//    };
+//
+//
+//    if (op_base == 0x01) {
+//        auto szOperand = base_01_ext_sz_operand[addrmode_idx];
+//        printf("opcode: %02x (aaa: %s, bbb: %s, cc: %s) -> addrmode:%s (idx: %d)\n",
+//               incoming,
+//               ToBinaryU8(op_ext).c_str(),
+//               ToBinaryU8(addrmode).c_str(),
+//               ToBinaryU8(op_base).c_str(),
+//               ToBinaryU8(addrmode_idx).c_str(),
+//               addrmode_idx);
+//        printf("%s, sz: %d\n", base_01_ext_class_operands[op_ext_idx].c_str(), szOperand);
+//        if (szOperand > 1) {
+//            // Fetch remaining...
+//            for (int i=0;i<szOperand-1;i++) {
+//                Fetch8();
+//            }
+//        }
+//    }
+
+
+    return res;
+}
+
+
 const std::string CPU::ToBinaryU8(uint8_t byte) {
 
     std::string str;
@@ -384,15 +720,15 @@ void CPU::SetStepResult(const char *format, ...) {
 }
 
 // This will refresh the Zero/Neg flags in the status register...
-void CPU::RefreshStatusFromALU() {
-    if (!reg_a) {
+void CPU::RefreshStatusFromValue(uint8_t reg) {
+    if (!reg) {
         //UpdateStatus(kFlag_Zero, true);
         mstatus.set(CpuFlag::Zero, true);
     } else {
         mstatus.set(CpuFlag::Zero, false);
     }
 
-    if (reg_a & 0x80) {
+    if (reg & 0x80) {
         //UpdateStatus(kFlag_Negative, true);
         mstatus.set(CpuFlag::Negative, true);
     } else {

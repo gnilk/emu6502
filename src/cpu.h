@@ -31,13 +31,23 @@ enum class kCpuOperands : uint8_t {
     PLA = 0x68,
     ADC_IMM = 0x69,
     SEI = 0x78,
+    DEY = 0x88,
+    TXA = 0x8a,
     STA = 0x8d,
-    NOP = 0xea,
+    TYA = 0x98,
+    LDY_IMM = 0xa0,
+    LDX_IMM = 0xa2,
+    TAY = 0xa8,
     LDA_IMM = 0xa9,
+    TAX = 0xaa,
     CLD = 0xd8,
     CLV = 0xB8,
+    INY = 0xC8,
+    DEX = 0xCA,
     LDA_ABS = 0xad,
+    INX = 0xe8,
     SBC_IMM = 0xe9,
+    NOP = 0xea,
     SED = 0xf8,
 };
 
@@ -164,7 +174,10 @@ public:
     void SetDebug(kDebugFlags flag, bool enable);
 
 protected:
-    void RefreshStatusFromALU();
+    bool TryDecode2();
+
+
+    void RefreshStatusFromValue(uint8_t reg);
     void SetStepResult(const char *format, ...);
 
     static const std::string ToBinaryU8(uint8_t byte);
