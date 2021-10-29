@@ -1,6 +1,18 @@
     * = $4000 "main"
 start:
+    rti
+    rts
+    jsr subroutine
 
+
+    bpl subroutine
+    bmi subroutine
+    bvc subroutine
+    bvs subroutine
+    bcc subroutine
+    bcs subroutine
+    bne subroutine
+    beq subroutine
     tay
     iny
     inx

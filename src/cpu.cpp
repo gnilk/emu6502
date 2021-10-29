@@ -472,6 +472,8 @@ struct OperandGroup {
     OperandSzAddr sizes[8];
 };
 
+
+
 static OperandGroup opGroup01={
     .names = {"ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"},
     .sizes = {
@@ -513,69 +515,87 @@ static OperandGroup opGroup00={
         }
 };
 
+struct OperandSpecial {
+    uint8_t size;
+    std::string name;
+    // TODO: Add lambda here???
+};
 
+static std::map<uint8_t, OperandSpecial> opSpecial={
+    { 0x20, { .size = 3, .name = "JSR" }},
+    { 0x40, { .size = 1, .name = "RTI" }},
+    { 0x60, { .size = 1, .name = "RTS" }}
+};
 
-bool CPU::TryDecode2() {
-    bool res = true;
-
-    uint8_t incoming = Fetch8();
-    if (incoming == 0x00) return false;
-
-    // Handle instructions which are a bit odd...
-    if ((incoming & 0x0f) == 0x08) {
-        if ((incoming & 0x10) == 0x10) {
-            // clear flags
-            static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
-
-            auto idxInstr = incoming >> 5;
-            printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
-
-
-            return true;
-        } else if ((incoming & 0xf0) < 0x70) {
-            static std::string names[]={"PHP", "PLP", "PHA", "PLA"};
-
-            auto idxInstr = (incoming >> 5);
-
-            // Push
-            printf("%s (%d, %02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
-            return true;
-        } else if ((incoming & 0xf0) >= 0x80) {
-            static std::string names[] = {"TAY", "INY", "INX"};
-
-            auto idxInstr = ((incoming >> 5) & 0x03) - 1;
-
-            printf("%s incoming: %02x - (%d, %02x) - %s\n", names[idxInstr].c_str(), incoming, idxInstr, idxInstr,
-                   ToBinaryU8(idxInstr).c_str());
-            return true;
-        }
-        printf("Unsupported op code: %02x\n", incoming);
+// This decodes all (hopefully) instructions
+bool CPU::TryDecodeOddities(uint8_t incoming) {
+    if ((incoming & 0x0f) != 0x08) {
+        return false;
     }
 
-    // Handle special stuff first
-    if ((incoming &0x10) == 0x10) {
-        printf("BRANCH\n");
-        Fetch8();
+    if ((incoming & 0x10) == 0x10) {
+        // clear flags
+        static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
+
+        auto idxInstr = incoming >> 5;
+        printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+        return true;
+
+    } else if ((incoming & 0xf0) < 0x70) {
+        // Push/Pop instructions
+        static std::string names[]={"PHP", "PLP", "PHA", "PLA"};
+
+        auto idxInstr = (incoming >> 5);
+        // Push
+        printf("%s (%d, %02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+        return true;
+
+    } else if ((incoming & 0xf0) >= 0x80) {
+        // Special other stuff...
+        static std::string names[] = {"TAY", "INY", "INX"};
+
+        auto idxInstr = ((incoming >> 5) & 0x03) - 1;
+
+        printf("%s incoming: %02x - (%d, %02x) - %s\n", names[idxInstr].c_str(), incoming, idxInstr, idxInstr,
+               ToBinaryU8(idxInstr).c_str());
         return true;
     }
-    // Now handle the following...
-    // JSR RTI	RTS
-    // 20  40	60
-    if (incoming == 0x20) {
-        printf("JSR");
-        Fetch8();
-        Fetch8();
-        return true;
+    return false;
+}
+
+bool CPU::TryDecodeBranches(uint8_t incoming) {
+    //
+    // Handle conditional branches...
+    // The conditional branch instructions all have the form xxy10000.
+    // The flag indicated by xx is compared with y, and the branch is taken if they are equal.
+    // 87654321
+    // xxy10000
+    //
+    if ((incoming &0x10) != 0x10) {
+        return false;
     }
+    static std::string names[]={
+            "BPL","BMI","BVC","BVC","BCC","BCS","BNE","BEQ"
+    };
+    //  xxy10000
+    // %00110000 - 0x30
+    // %00100000 - 0x20
+    bool testFlag = (incoming & 0x20)?true:false;
+    uint8_t idxBrandOp = ((incoming >> 6)<<1) | (testFlag?1:0);
+    printf("%s  (Branch, flag: %s, incoming: %02x, idxBrandOp: %02x)\n",
+           names[idxBrandOp].c_str(), testFlag?"0":"1",incoming, idxBrandOp);
+    uint8_t relativeAddr = Fetch8();
 
+    return true;
+}
 
-
+bool CPU::TryDecodeOpGroup(uint8_t incoming) {
+    // Handle regular
     uint8_t op_base = incoming & OPCODE_MASK_BASE;
     uint8_t addrmode = incoming & OPCODE_MASK_ADDRMODE;
     uint8_t addrmode_idx = addrmode >> 2;
     uint8_t op_ext = incoming & OPCODE_MASK_EXT;
     uint8_t op_ext_idx = op_ext >> 5;
-
 
     static OperandGroup *opGroups[4]={
             nullptr,
@@ -586,9 +606,9 @@ bool CPU::TryDecode2() {
 
     OperandGroup *opGroup = opGroups[op_base];
     if (opGroup == nullptr) {
-        printf("Emulation of opcode %02x not implemented\n", incoming);
-        exit(1);
+        return false;
     }
+
     const std::string &name = opGroup->Name(op_ext_idx);
     auto szOperand = to_underlying(opGroup->Size(addrmode_idx));
     printf("%s, sz: %d\n", name.c_str(), szOperand);
@@ -599,87 +619,48 @@ bool CPU::TryDecode2() {
         }
     }
     return true;
+}
+bool CPU::TryDecodeLeftovers(uint8_t incoming) {
+
+    // Handle left overs
+    if (opSpecial.find(incoming) == opSpecial.end()) {
+        return false;
+    }
+
+    auto op = opSpecial[incoming];
+    printf("%s\n", op.name.c_str());
+    if (op.size > 1) {
+        for (int i=1; i<op.size;i++) {
+            Fetch8();
+        }
+    }
+    return true;
+}
 
 
-//    //
-//    // Operand Group 1
-//    //
-//    static std::string base_01_ext_class_operands[]={
-//            "ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"
-//    };
-//    // Size besides the op-code
-//    /*
-//    bbb	addressing mode
-//    000	(zero page,X)
-//    001	zero page
-//    010	#immediate
-//    011	absolute
-//    100	(zero page),Y
-//    101	zero page,X
-//    110	absolute,Y
-//    111	absolute,X
-//     */
-//    static uint8_t base_01_ext_sz_operand[8] {
-//        OperandSzAddr::ZeroPageIndX,
-//        OperandSzAddr::Zeropage,
-//        OperandSzAddr::Immediate,
-//        OperandSzAddr::Absolute,
-//        OperandSzAddr::ZeroPageIndY,
-//        OperandSzAddr::ZeropageX,
-//        OperandSzAddr::AbsoluteIndY,
-//        OperandSzAddr::AbsoluteIndY,
-//    };
-//
-//    static std::string base_10_ext_class_operands[]={
-//            "ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",
-//    };
-//
-//    /*
-//        bbb	addressing mode
-//        000	#immediate
-//        001	zero page
-//        010	accumulator
-//        011	absolute
-//        101	zero page,X
-//        111	absolute,X
-//     */
-//    static uint8_t base_10_ext_sz_operand[8] {
-//        OperandSzAddr::Immediate,
-//        OperandSzAddr::Zeropage,
-//        OperandSzAddr::Accumulator,
-//        OperandSzAddr::AbsoluteIndY,
-//        0,
-//        OperandSzAddr::ZeropageX,
-//        0,
-//        OperandSzAddr::AbsoluteIndX,
-//    };
-//
-//
-//    static std::string base_00_ext_class_operands[]={
-//            "---", "BIT", "JMP", "JMP", "STY", "LDY", "CPY", "CPX",
-//    };
-//
-//
-//    if (op_base == 0x01) {
-//        auto szOperand = base_01_ext_sz_operand[addrmode_idx];
-//        printf("opcode: %02x (aaa: %s, bbb: %s, cc: %s) -> addrmode:%s (idx: %d)\n",
-//               incoming,
-//               ToBinaryU8(op_ext).c_str(),
-//               ToBinaryU8(addrmode).c_str(),
-//               ToBinaryU8(op_base).c_str(),
-//               ToBinaryU8(addrmode_idx).c_str(),
-//               addrmode_idx);
-//        printf("%s, sz: %d\n", base_01_ext_class_operands[op_ext_idx].c_str(), szOperand);
-//        if (szOperand > 1) {
-//            // Fetch remaining...
-//            for (int i=0;i<szOperand-1;i++) {
-//                Fetch8();
-//            }
-//        }
-//    }
+bool CPU::TryDecode2() {
+    bool res = true;
 
+    uint8_t incoming = Fetch8();
+    printf("%02x\n",incoming);
+    if (incoming == 0x00) return false;
 
-    return res;
+    // Handle instructions which are a bit odd...
+    if (TryDecodeOddities(incoming)) {
+        return true;
+    }
+    if (TryDecodeBranches(incoming)) {
+        return true;
+    }
+    if (TryDecodeOpGroup(incoming)) {
+        return true;
+    }
+    if (TryDecodeLeftovers(incoming)) {
+        return true;
+    }
+
+    printf("ERROR: Invalid or unhandled op-code: %02x\n", incoming);
+    return false;
 }
 
 

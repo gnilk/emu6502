@@ -175,6 +175,10 @@ public:
 
 protected:
     bool TryDecode2();
+    bool TryDecodeOddities(uint8_t incoming);
+    bool TryDecodeBranches(uint8_t incoming);
+    bool TryDecodeOpGroup(uint8_t incoming);
+    bool TryDecodeLeftovers(uint8_t incoming);
 
 
     void RefreshStatusFromValue(uint8_t reg);
