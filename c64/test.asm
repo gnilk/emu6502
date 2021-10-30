@@ -1,12 +1,17 @@
     * = $4000 "main"
-start:  
-    lda #$10
-    sec
-    asl
-    asl value
+start:
+    bpl subroutine
+    bmi subroutine
+    bvc subroutine
+    bvs subroutine
+    bcc subroutine
+    bcs subroutine
+    bne subroutine
+    beq subroutine
+
     brk
 subroutine:
-
+    brk
     rts
     * = $4100
 value: .byte $80

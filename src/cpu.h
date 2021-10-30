@@ -15,7 +15,7 @@
 
 
 #define MAX_RAM (64*1024)
-enum class kCpuOperands : uint8_t {
+enum class CpuOperands : uint8_t {
     BRK = 0x00,
     PHP = 0x08,
     ORA_IMM = 0x09,
@@ -169,7 +169,7 @@ class CPU {
 public:
     using CPUInstruction = struct {
         //uint8_t opCode;
-        kCpuOperands opCode;
+        CpuOperands opCode;
         uint8_t bytes;
         std::string name;
         std::function<void()> exec;
@@ -237,7 +237,7 @@ private:
     // Not releated to 6502
     kDebugFlags debugFlags;
     std::string lastStepResult;
-    std::map<kCpuOperands, CPUInstruction > instructions;
+    std::map<CpuOperands, CPUInstruction > instructions;
 };
 
 

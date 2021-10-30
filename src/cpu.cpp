@@ -19,6 +19,8 @@
 
 //
 // C++ version to properly cast an enum class : T to the underlying type T
+// example: enum class X : uint_8 {};
+// The underlying class is uint8_t - one needs access to it in order to do bit manipulation and other things...
 //
 template <typename E>
 constexpr auto to_underlying(E e) noexcept
@@ -87,24 +89,24 @@ void CPU::Initialize() {
     //
     // TODO: Consider putting these somewhere else as this will blow up quite heavily...
     //
-    instructions[kCpuOperands::CLC] = {
-            kCpuOperands::CLC, 1, "CLC", [this](){
+    instructions[CpuOperands::CLC] = {
+            CpuOperands::CLC, 1, "CLC", [this](){
                 mstatus.set(CpuFlag::Carry, false);
 //                UpdateStatus(kCpuFlags::kFlag_Carry, false);
                 SetStepResult("CLC");
             }
     };
 
-    instructions[kCpuOperands::SEC] = {
-            kCpuOperands::SEC, 1, "SEC", [this](){
+    instructions[CpuOperands::SEC] = {
+            CpuOperands::SEC, 1, "SEC", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_Carry, true);
                 mstatus.set(CpuFlag::Carry);
                 SetStepResult("SEC");
             }
     };
 
-    instructions[kCpuOperands::PHP] = {
-            kCpuOperands::PHP, 1, "PHP", [this](){
+    instructions[CpuOperands::PHP] = {
+            CpuOperands::PHP, 1, "PHP", [this](){
                 // According to the emulators this is not set on reset
                 // but in the data-sheet it is said to be '1'
                 // Note: In VICE the BRK flag is also set -
@@ -117,8 +119,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::PLP] = {
-            kCpuOperands::PLP, 1, "PLP", [this](){
+    instructions[CpuOperands::PLP] = {
+            CpuOperands::PLP, 1, "PLP", [this](){
                 //status = Pop8();
                 auto tmp = static_cast<CpuFlags>(Pop8());
                 tmp.set(CpuFlag::Unused, false);
@@ -127,55 +129,55 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::PHA] = {
-            kCpuOperands::PHA, 1, "PHA", [this](){
+    instructions[CpuOperands::PHA] = {
+            CpuOperands::PHA, 1, "PHA", [this](){
                 Push8(reg_a);
                 SetStepResult("PHA");
             }
     };
 
-    instructions[kCpuOperands::PLA] = {
-            kCpuOperands::PLA, 1, "PLA", [this](){
+    instructions[CpuOperands::PLA] = {
+            CpuOperands::PLA, 1, "PLA", [this](){
                 reg_a = Pop8();
                 RefreshStatusFromValue(reg_a);
                 SetStepResult("PLA");
             }
     };
 
-    instructions[kCpuOperands::CLD] = {
-            kCpuOperands::CLD, 1, "CLD", [this](){
+    instructions[CpuOperands::CLD] = {
+            CpuOperands::CLD, 1, "CLD", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_DecimalMode, false);
                 mstatus.set(CpuFlag::DecimalMode, false);
                 SetStepResult("CLD");
             }
     };
 
-    instructions[kCpuOperands::SED] = {
-            kCpuOperands::SED, 1, "SED", [this](){
+    instructions[CpuOperands::SED] = {
+            CpuOperands::SED, 1, "SED", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_DecimalMode, true);
                 mstatus.set(CpuFlag::DecimalMode, true);
                 SetStepResult("SED");
             }
     };
 
-    instructions[kCpuOperands::CLV] = {
-            kCpuOperands::CLV, 1, "CLV", [this](){
+    instructions[CpuOperands::CLV] = {
+            CpuOperands::CLV, 1, "CLV", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
                 mstatus.set(CpuFlag::Overflow, false);
                 SetStepResult("CLV");
             }
     };
 
-    instructions[kCpuOperands::CLI] = {
-            kCpuOperands::CLI, 1, "CLI", [this](){
+    instructions[CpuOperands::CLI] = {
+            CpuOperands::CLI, 1, "CLI", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
                 mstatus.set(CpuFlag::InterruptDisable, false);
                 SetStepResult("CLI");
             }
     };
 
-    instructions[kCpuOperands::SEI] = {
-            kCpuOperands::SEI, 1, "SEI", [this](){
+    instructions[CpuOperands::SEI] = {
+            CpuOperands::SEI, 1, "SEI", [this](){
                 //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
                 mstatus.set(CpuFlag::InterruptDisable, true);
                 SetStepResult("SEI");
@@ -183,8 +185,8 @@ void CPU::Initialize() {
     };
 
 
-    instructions[kCpuOperands::ORA_IMM] = {
-            kCpuOperands::ORA_IMM, 2, "ORA", [this](){
+    instructions[CpuOperands::ORA_IMM] = {
+            CpuOperands::ORA_IMM, 2, "ORA", [this](){
                 uint8_t val = Fetch8();
                 reg_a |= val;
                 RefreshStatusFromValue(reg_a);
@@ -192,8 +194,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::AND_IMM] = {
-            kCpuOperands::AND_IMM, 2, "AND", [this](){
+    instructions[CpuOperands::AND_IMM] = {
+            CpuOperands::AND_IMM, 2, "AND", [this](){
                 uint8_t val = Fetch8();
                 reg_a &= val;
                 RefreshStatusFromValue(reg_a);
@@ -201,8 +203,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::EOR_IMM] = {
-            kCpuOperands::EOR_IMM, 2, "EOR", [this](){
+    instructions[CpuOperands::EOR_IMM] = {
+            CpuOperands::EOR_IMM, 2, "EOR", [this](){
                 uint8_t val = Fetch8();
                 reg_a ^= val;
                 RefreshStatusFromValue(reg_a);
@@ -211,8 +213,8 @@ void CPU::Initialize() {
     };
 
 
-    instructions[kCpuOperands::ADC_IMM] = {
-            kCpuOperands::ADC_IMM, 2, "SBC", [this](){
+    instructions[CpuOperands::ADC_IMM] = {
+            CpuOperands::ADC_IMM, 2, "SBC", [this](){
                 uint8_t val = Fetch8();
                 reg_a += val;
                 reg_a += mstatus[CpuFlag::Carry]?1:0;
@@ -231,8 +233,8 @@ void CPU::Initialize() {
     };
 
 
-    instructions[kCpuOperands::SBC_IMM] = {
-            kCpuOperands::SBC_IMM, 2, "SBC", [this](){
+    instructions[CpuOperands::SBC_IMM] = {
+            CpuOperands::SBC_IMM, 2, "SBC", [this](){
                 uint8_t val = Fetch8();
                 reg_a -= val;
                 reg_a -= mstatus[CpuFlag::Carry]?0:1;
@@ -251,40 +253,40 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::TAY] = {
-            kCpuOperands::TAY, 1, "TAY", [this](){
+    instructions[CpuOperands::TAY] = {
+            CpuOperands::TAY, 1, "TAY", [this](){
                 reg_y = reg_a;
                 RefreshStatusFromValue(reg_y);
                 SetStepResult("TAY");
             }
     };
 
-    instructions[kCpuOperands::TYA] = {
-            kCpuOperands::TYA, 1, "TYA", [this](){
+    instructions[CpuOperands::TYA] = {
+            CpuOperands::TYA, 1, "TYA", [this](){
                 reg_a = reg_y;
                 RefreshStatusFromValue(reg_a);
                 SetStepResult("TYA");
             }
     };
 
-    instructions[kCpuOperands::TXA] = {
-            kCpuOperands::TXA, 1, "TXA", [this](){
+    instructions[CpuOperands::TXA] = {
+            CpuOperands::TXA, 1, "TXA", [this](){
                 reg_a = reg_x;
                 RefreshStatusFromValue(reg_a);
                 SetStepResult("TXA");
             }
     };
 
-    instructions[kCpuOperands::TAX] = {
-            kCpuOperands::TAX, 1, "TAX", [this](){
+    instructions[CpuOperands::TAX] = {
+            CpuOperands::TAX, 1, "TAX", [this](){
                 reg_x = reg_a;
                 RefreshStatusFromValue(reg_a);
                 SetStepResult("TAX");
             }
     };
 
-    instructions[kCpuOperands::DEY] = {
-            kCpuOperands::DEY, 1, "DEY", [this](){
+    instructions[CpuOperands::DEY] = {
+            CpuOperands::DEY, 1, "DEY", [this](){
                 auto old_y = reg_y;
                 reg_y = (reg_y - 1) & 255;
                 RefreshStatusFromValue(reg_y);
@@ -292,8 +294,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::DEX] = {
-            kCpuOperands::DEY, 1, "DEX", [this](){
+    instructions[CpuOperands::DEX] = {
+            CpuOperands::DEY, 1, "DEX", [this](){
                 auto old_x = reg_x;
                 reg_x = (reg_x - 1) & 255;
                 RefreshStatusFromValue(reg_x);
@@ -301,8 +303,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::INY] = {
-            kCpuOperands::INY, 1, "INY", [this](){
+    instructions[CpuOperands::INY] = {
+            CpuOperands::INY, 1, "INY", [this](){
                 auto old_y = reg_y;
                 reg_y = (reg_y + 1) & 255;
                 RefreshStatusFromValue(reg_y);
@@ -310,8 +312,8 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::INX] = {
-            kCpuOperands::INX, 1, "INX", [this](){
+    instructions[CpuOperands::INX] = {
+            CpuOperands::INX, 1, "INX", [this](){
                 auto old_y = reg_x;
                 reg_x = (reg_x + 1) & 255;
                 RefreshStatusFromValue(reg_x);
@@ -319,32 +321,32 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::LDA_IMM] = {
-            kCpuOperands::LDA_IMM, 2, "LDA", [this](){
+    instructions[CpuOperands::LDA_IMM] = {
+            CpuOperands::LDA_IMM, 2, "LDA", [this](){
                 reg_a = Fetch8();
                 RefreshStatusFromValue(reg_a);
                 SetStepResult("LDA #$%02x", reg_a);
             }
     };
 
-    instructions[kCpuOperands::LDX_IMM] = {
-            kCpuOperands::LDX_IMM, 2, "LDX", [this](){
+    instructions[CpuOperands::LDX_IMM] = {
+            CpuOperands::LDX_IMM, 2, "LDX", [this](){
                 reg_x = Fetch8();
                 RefreshStatusFromValue(reg_x);
                 SetStepResult("LDX #$%02x", reg_x);
             }
     };
 
-    instructions[kCpuOperands::LDY_IMM] = {
-            kCpuOperands::LDY_IMM, 2, "LDY", [this](){
+    instructions[CpuOperands::LDY_IMM] = {
+            CpuOperands::LDY_IMM, 2, "LDY", [this](){
                 reg_y = Fetch8();
                 RefreshStatusFromValue(reg_y);
                 SetStepResult("LDY #$%02x", reg_y);
             }
     };
 
-    instructions[kCpuOperands::LDA_ABS] = {
-            kCpuOperands::LDA_ABS, 3, "LDA", [this](){
+    instructions[CpuOperands::LDA_ABS] = {
+            CpuOperands::LDA_ABS, 3, "LDA", [this](){
                 uint16_t ofs = Fetch16();
                 uint8_t value = ReadU8(ofs);
                 reg_a = value;
@@ -353,16 +355,16 @@ void CPU::Initialize() {
             }
     };
 
-    instructions[kCpuOperands::STA] = {
-            kCpuOperands::STA, 3, "STA", [this](){
+    instructions[CpuOperands::STA] = {
+            CpuOperands::STA, 3, "STA", [this](){
                 uint16_t ofs = Fetch16();
                 WriteU8(ofs, reg_a);
                 SetStepResult("STA $%04x (#$%02x => $%04x)", ofs, reg_a, ofs);
             }
     };
 
-    instructions[kCpuOperands::JSR] = {
-            kCpuOperands::JSR, 3, "JSR", [this](){
+    instructions[CpuOperands::JSR] = {
+            CpuOperands::JSR, 3, "JSR", [this](){
                 uint16_t ofs = Fetch16();
                 uint16_t ipReturn = ip;
                 SetStepResult("JSR $%04x", ofs);
@@ -370,8 +372,8 @@ void CPU::Initialize() {
                 Push16(ipReturn);
             }
     };
-    instructions[kCpuOperands::RTS] = {
-            kCpuOperands::RTS,1,"RTS", [this](){
+    instructions[CpuOperands::RTS] = {
+            CpuOperands::RTS, 1, "RTS", [this](){
                 uint16_t ofs = Pop16();
                 SetStepResult("RTS  (ip will be: $%04x)", ofs);
                 ip = ofs;
@@ -400,16 +402,16 @@ bool CPU::Step() {
     return TryDecode();
 
     // TODO: Static cast here is probably wrong...
-    kCpuOperands opcode = static_cast<kCpuOperands>(Fetch8());
+    CpuOperands opcode = static_cast<CpuOperands>(Fetch8());
     if (instructions.find(opcode) != instructions.end()) {
         instructions[opcode].exec();
     } else {
         switch (opcode) {
-            case kCpuOperands::BRK :
+            case CpuOperands::BRK :
                 res = false;
                 SetStepResult("BRK");
                 break;
-            case kCpuOperands::NOP :
+            case CpuOperands::NOP :
                 // Do nothing...
                 SetStepResult("NOP");
                 break;
@@ -617,19 +619,85 @@ bool CPU::TryDecodeOddities(uint8_t incoming) {
 
     if ((incoming & 0x10) == 0x10) {
         // clear flags
-        static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
-
-        auto idxInstr = incoming >> 5;
-        printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+//        static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
+//        static CpuOperands opcodes[]={
+//                CpuOperands::CLC,
+//                CpuOperands::SEC,
+//                CpuOperands::CLI,
+//                CpuOperands::SEI,
+//                CpuOperands::TYA,
+//                CpuOperands::CLV,
+//                CpuOperands::CLD,
+//                CpuOperands::SED};
+//
+//        auto idxInstr = incoming >> 5;
+//        printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+        switch(static_cast<CpuOperands>(incoming)) {
+            case CpuOperands::CLC :
+                mstatus.set(CpuFlag::Carry, false);
+                SetStepResult("CLC");
+                break;
+            case CpuOperands::SEC :
+                mstatus.set(CpuFlag::Carry,true);
+                SetStepResult("SEC");
+                break;
+            case CpuOperands::CLI :
+                mstatus.set(CpuFlag::InterruptDisable, false);
+                SetStepResult("CLC");
+                break;
+            case CpuOperands::SEI :
+                mstatus.set(CpuFlag::InterruptDisable,true);
+                SetStepResult("SEC");
+                break;
+            case CpuOperands::TYA :
+                reg_a = reg_y;
+                RefreshStatusFromValue(reg_a);
+                SetStepResult("TYA");
+                break;
+            case CpuOperands::CLV :
+                mstatus.set(CpuFlag::Overflow, false);
+                SetStepResult("CLV");
+                break;
+            case CpuOperands::CLD :
+                mstatus.set(CpuFlag::DecimalMode, false);
+                SetStepResult("CLD");
+                break;
+            case CpuOperands::SED :
+                mstatus.set(CpuFlag::DecimalMode,true);
+                SetStepResult("SED");
+                break;
+        }
         return true;
 
     } else if ((incoming & 0xf0) < 0x70) {
-        // Push/Pop instructions
-        static std::string names[]={"PHP", "PLP", "PHA", "PLA"};
 
-        auto idxInstr = (incoming >> 5);
-        // Push
-        printf("%s (%d, %02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
+        switch(static_cast<CpuOperands>(incoming)) {
+            case CpuOperands::PHP : {
+                    auto current = mstatus;
+                    current.set(CpuFlag::Unused);
+                    current.set(CpuFlag::BreakCmd);
+
+                    Push8(current.raw());
+                    SetStepResult("PHP");
+               }
+               break;
+            case CpuOperands::PLP : {
+                    auto tmp = static_cast<CpuFlags>(Pop8());
+                    tmp.set(CpuFlag::Unused, false);
+                    mstatus = tmp;
+                    SetStepResult("PLP");
+                }
+                break;
+            case CpuOperands::PHA :
+                Push8(reg_a);
+                SetStepResult("PHA");
+                break;
+            case CpuOperands::PLA :
+                reg_a = Pop8();
+                RefreshStatusFromValue(reg_a);
+                SetStepResult("PLA");
+                break;
+        }
         return true;
 
     } else if ((incoming & 0xf0) >= 0x80) {
@@ -640,6 +708,25 @@ bool CPU::TryDecodeOddities(uint8_t incoming) {
 
         printf("%s incoming: %02x - (%d, %02x) - %s\n", names[idxInstr].c_str(), incoming, idxInstr, idxInstr,
                ToBinaryU8(idxInstr).c_str());
+        switch(static_cast<CpuOperands>(incoming)) {
+            case CpuOperands::TAY :
+                reg_y = reg_a;
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("TAY");
+                break;
+            case CpuOperands::INY :
+                reg_y = reg_y+1;
+                reg_y = reg_y & 255;
+                RefreshStatusFromValue(reg_y);
+                SetStepResult("INY");
+                break;
+            case CpuOperands::INX :
+                reg_x = reg_x+1;
+                reg_x = reg_x & 255;
+                RefreshStatusFromValue(reg_x);
+                SetStepResult("INX");
+                break;
+        }
         return true;
     }
     return false;
@@ -658,16 +745,40 @@ bool CPU::TryDecodeBranches(uint8_t incoming) {
         return false;
     }
     static std::string names[]={
-            "BPL","BMI","BVC","BVC","BCC","BCS","BNE","BEQ"
+            "BPL","BMI","BVC","BVS","BCC","BCS","BNE","BEQ"
     };
+
+    static CpuFlag flags[]={
+            CpuFlag::Negative, CpuFlag::Overflow, CpuFlag::Carry, CpuFlag::Zero,
+    };
+
     //  xxy10000
     // %00110000 - 0x30
     // %00100000 - 0x20
     bool testFlag = (incoming & 0x20)?true:false;
-    uint8_t idxBrandOp = ((incoming >> 6)<<1) | (testFlag?1:0);
-    printf("%s  (Branch, flag: %s, incoming: %02x, idxBrandOp: %02x)\n",
-           names[idxBrandOp].c_str(), testFlag?"0":"1",incoming, idxBrandOp);
+    uint8_t idxName = ((incoming >> 6) << 1) | (testFlag ? 1 : 0);
+
+    // Suck in the relative address anc compute the absolute address...
+    // The absolute address is +ofs+2 from conditional op-code start, or -ofs from where ip is after reading the
+    // relative address...
     uint8_t relativeAddr = Fetch8();
+    uint16_t dstAddr = ip + relativeAddr;
+
+    SetStepResult("%s *+$%02x  ($%04x)", names[idxName].c_str(), relativeAddr, dstAddr);
+
+
+    uint8_t flagIndex = (incoming >> 6);
+    if (testFlag) {
+        if (mstatus[flags[flagIndex]] == true) {
+            ip = dstAddr;
+        }
+    } else {
+        if (mstatus[flags[flagIndex]] == false) {
+            ip = dstAddr;
+        }
+    }
+
+
 
     return true;
 }
