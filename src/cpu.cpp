@@ -1,5 +1,10 @@
 //
-// Created by Fredrik Kling on 27/10/2021.
+// Simple 6502 CPU Emulator
+//
+// TODO:
+//   - Overflow ('V') flags is not implemented
+//   - Consider using a 'Tick' based system instead which would add support for peripherals (VIC, SID) and enable them to be cycle exact..
+//
 //
 
 #include "cpu.h"
@@ -22,7 +27,7 @@ constexpr auto to_underlying(E e) noexcept
 }
 
 //
-// Operator for logical AND on debug flags...
+// Logical operators for debug flags enables us to use them as bit-operands...
 //
 // Note, trying to get a feel for CPP scoped enumerators
 //
@@ -60,7 +65,8 @@ kDebugFlags operator |= (kDebugFlags &lhs, kDebugFlags rhs) {
 
 
 CPU::CPU() : ram(nullptr), mstatus(0) {
-
+    InitializeOpGroup01();
+    InitializeOpGroup10();
 }
 void CPU::Initialize() {
     if (ram != nullptr) {
@@ -467,6 +473,10 @@ static size_t OpAddrModeToSize(OperandAddrMode addressingMode) {
 //    ZeroPageIndX = 2,    // (Zeropage),x
 //    ZeroPageIndY = 2,    // (Zeropage),y
 //    Accumulator  = 1,    // Directly affecting accumulator
+
+
+    // Note: There are instructions that don't take any argument (ASL, LSR, ROL, ROR, etc...)
+    //       They have instruction size '1'
     static std::map<OperandAddrMode, size_t> modeToSize = {
             { OperandAddrMode::Invalid, 0 },
             { OperandAddrMode::Immediate, 2 },
@@ -479,6 +489,7 @@ static size_t OpAddrModeToSize(OperandAddrMode addressingMode) {
             { OperandAddrMode::ZeroPageIndY, 2 },
             { OperandAddrMode::Accumulator, 1 },
     };
+
     return modeToSize[addressingMode];
 }
 
@@ -514,8 +525,8 @@ static OperandGroup opGroup10={
                 OperandAddrMode::Immediate,       // 000
                 OperandAddrMode::Zeropage,        // 001
                 OperandAddrMode::Accumulator,     // 010
-                OperandAddrMode::AbsoluteIndY,    // 011
-                OperandAddrMode::Invalid,         // 100      INVALID
+                OperandAddrMode::Absolute,        // 011
+                OperandAddrMode::Invalid,         // 100
                 OperandAddrMode::ZeropageX,       // 101
                 OperandAddrMode::Invalid,         // 110      INVALID
                 OperandAddrMode::AbsoluteIndX,    // 111
@@ -661,19 +672,169 @@ bool CPU::TryDecodeBranches(uint8_t incoming) {
     return true;
 }
 
+void CPU::InitializeOpGroup01() {
+    //
+    // Setup opGroup handlers, these are called during decoding from 'TryDecodeOpGroup' when processing op-codes in
+    // group 01. The handler essentially calls OperandResolveAddressAndExecute which resolves the addressing depending
+    // on the addressing mode then it calls the 'action' which performs the actual load/store or any other operand...
+    //
+
+    // OpGroup operands:
+    //  0: "ORA"
+    //  1: "AND"
+    //  2: "EOR"
+    //  3: "ADC"
+    //  4: "STA
+    //  5: "LDA"
+    //  6: "CMP"
+    //  7: "SBC"
+
+    // Consider passing around and operand structure instead...
+    opGroup01.handlers[0] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("ORA", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a |= v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a |= ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+
+    opGroup01.handlers[1] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("AND", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a &= v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a &= ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+
+    opGroup01.handlers[2] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("EOR", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a ^= v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a ^= ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+
+    opGroup01.handlers[3] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("ADC", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a += v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a += ReadU8(index);
+            }
+
+            reg_a += mstatus[CpuFlag::Carry] ? 1 : 0;
+            if (reg_a > 255) {
+                mstatus.set(CpuFlag::Carry, true);
+                reg_a &= 0xff;
+            } else {
+                mstatus.set(CpuFlag::Carry, false);
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+
+    opGroup01.handlers[4] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("STA", addrMode, [&](uint16_t index, uint8_t v) {
+            // No immediate mode - just write whatever...
+            WriteU8(index, reg_a);
+        });
+    };
+    opGroup01.handlers[5] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("LDA", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a = v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a = ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+
+    // TODO: opGroup01 [6] = CMP
+
+    opGroup01.handlers[7] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("SBC", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_a -= v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_a -= ReadU8(index);
+            }
+
+            reg_a -= mstatus[CpuFlag::Carry] ? 1 : 0;
+            if (reg_a > 0) {
+                mstatus.set(CpuFlag::Carry, true);
+            } else {
+                mstatus.set(CpuFlag::Carry, false);
+                reg_a &= 0xff;
+            }
+            RefreshStatusFromValue(reg_a);
+        });
+    };
+}
+
+// Initialize operand group for {"ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",},
+void CPU::InitializeOpGroup10() {
+
+    opGroup10.handlers[0] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("ASL", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Accumulator) {
+                reg_a = reg_a << 1;
+                if (reg_a > 255) {
+                    mstatus.set(CpuFlag::Carry, true);
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
+                }
+                reg_a = reg_a & 255;
+                RefreshStatusFromValue(reg_a);
+            } else {
+                // Any non-immediate mode operand will load from/write to memory..
+                uint16_t val = ReadU8(index);
+                val = val << 1;
+                if (val > 255) {
+                    mstatus.set(CpuFlag::Carry, true);
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
+                }
+                v = val & 255;
+
+                WriteU8(index, v);
+                RefreshStatusFromValue(v);
+            }
+        });
+    };
+
+}
+
+
 bool CPU::TryDecodeOpGroup(uint8_t incoming) {
-    // Handle regular
+    // Split up the op-code in to the logical options
+    // see: https://llx.com/Neil/a2/opcodes.html
+    //
+    // If the bitpattern is 'aaabbbcc' (MSB left, LSB right)
+    // The aaa and cc bits determine the opcode, and the bbb bits determine the addressing mode.
+    //
+    // Two groups can be solved in a bulk like fashion as they all use more or less same addressing scheme...
+    //
     uint8_t op_base = incoming & OPCODE_MASK_BASE;
     uint8_t addrmode = incoming & OPCODE_MASK_ADDRMODE;
     uint8_t addrmode_idx = addrmode >> 2;
     uint8_t op_ext = incoming & OPCODE_MASK_EXT;
     uint8_t op_ext_idx = op_ext >> 5;
-
-    //
-    // TEST TEST
-    //
-    opGroup01.handlers[4] = [this](OperandAddrMode addrMode){ this->OpHandler_STA(addrMode); };
-    opGroup01.handlers[5] = [this](OperandAddrMode addrMode){ this->OpHandler_LDA(addrMode); };
 
     static OperandGroup *opGroups[4]={
             nullptr,
@@ -691,6 +852,7 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     auto nBytes = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
     auto szOperand = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
     printf("%s, sz: %d (op_base: %d)\n", name.c_str(), szOperand,op_base);
+
     if (opGroup->handlers[op_ext_idx] != nullptr) {
         opGroup->handlers[op_ext_idx](opGroup->AddrMode(addrmode_idx));
     } else {
@@ -700,7 +862,6 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
                 Fetch8();
             }
         }
-
     }
     return true;
 }
@@ -720,10 +881,6 @@ bool CPU::TryDecodeLeftovers(uint8_t incoming) {
     }
     return true;
 }
-
-
-
-
 
 
 const std::string CPU::ToBinaryU8(uint8_t byte) {
@@ -869,9 +1026,12 @@ void CPU::WriteU32(uint32_t index, uint32_t value) {
 }
 
 // This handles both LDA/STA/ORA/AND/EOR
-void CPU::OpHandler_Common(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action) {
+void CPU::OperandResolveAddressAndExecute(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action) {
     auto szOperand = OpAddrModeToSize(addrMode);
-    if (szOperand == 2) {
+    if ((szOperand == 1) && (addrMode == OperandAddrMode::Accumulator)) {
+        SetStepResult("%s a", name.c_str());
+        Action(0,0);
+    } else if (szOperand == 2) {
         uint8_t v = Fetch8();
         switch(addrMode) {
             case OperandAddrMode::Immediate :
@@ -888,16 +1048,17 @@ void CPU::OpHandler_Common(const std::string &name, OperandAddrMode addrMode, Op
                 Action(v,v);
                 break;
             case OperandAddrMode::ZeroPageIndX :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
-                SetStepResult("%s $(%02x,x)", name.c_str(), v);
-                v += reg_x;
-                v = ReadU16(v);
-                Action(v,ReadU8(v));
+                {
+                    SetStepResult("%s $(%02x,x)", name.c_str(), v);
+                    // Compute index in ZeroPage relative X
+                    v += reg_x;
+                    // Read final address as 16 bit from Zeropage
+                    uint16_t finalAddr = ReadU16(v);
+                    // Now perform action with final address...
+                    Action(finalAddr, v);
+                }
                 break;
             case OperandAddrMode::ZeroPageIndY :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
                 SetStepResult("%s $(%02x),y", name.c_str(), v);
                 v = ReadU16(v);
                 v += reg_y;
@@ -927,142 +1088,22 @@ void CPU::OpHandler_Common(const std::string &name, OperandAddrMode addrMode, Op
 
 }
 
-/// OpCode handlers
+/// Template testing
 void CPU::OpHandler_LDA(OperandAddrMode addrMode) {
 
-    OpHandler_Common("LDA", addrMode, [&](uint16_t index, uint8_t v){
-        if (OpAddrModeToSize(addrMode) == 2) {
+    OperandResolveAddressAndExecute("LDA", addrMode, [&](uint16_t index, uint8_t v) {
+        if (addrMode == OperandAddrMode::Immediate) {
             reg_a = v;
         } else {
             reg_a = ReadU8(index);
         }
         RefreshStatusFromValue(reg_a);
     });
-    return;
-
-
-    auto szOperand = OpAddrModeToSize(addrMode);
-    if (szOperand == 2) {
-        // 8bit
-        uint8_t v = Fetch8();
-        switch(addrMode) {
-            case OperandAddrMode::Immediate :
-                SetStepResult("LDA #$%02x", v);
-                reg_a = v;
-                break;
-            case OperandAddrMode::Zeropage :
-                SetStepResult("LDA $%02x", v);
-                reg_a = ReadU8(v);
-                break;
-            case OperandAddrMode::ZeropageX :
-                SetStepResult("*LDA $%02x,x", v);
-                v += reg_x;
-                reg_a = ReadU8(v);
-                break;
-            case OperandAddrMode::ZeroPageIndX :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
-                SetStepResult("LDA $(%02x,x)", v);
-                v += reg_x;
-                v = ReadU16(v);
-                reg_a = ReadU8(v);
-                break;
-            case OperandAddrMode::ZeroPageIndY :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
-                SetStepResult("LDA $(%02x),y", v);
-                v = ReadU16(v);
-                v += reg_y;
-                reg_a = ReadU8(v);
-                break;
-
-        }
-        RefreshStatusFromValue(reg_a);
-
-    } else if (szOperand == 3) {
-        // 16bit
-        uint16_t v = Fetch16();
-        switch(addrMode) {
-            case OperandAddrMode::Absolute :
-                SetStepResult("LDA $%04x", v);
-                reg_a = ReadU8(v);
-                break;
-            case OperandAddrMode::AbsoluteIndX :
-                SetStepResult("LDA $%04x,x", v);
-                v += reg_x;
-                reg_a = ReadU8(v);
-                break;
-            case OperandAddrMode::AbsoluteIndY :
-                SetStepResult("LDA $%04x,y", v);
-                v += reg_y;
-                reg_a = ReadU8(v);
-                break;
-        }
-        RefreshStatusFromValue(reg_a);
-    }
 }
 
 void CPU::OpHandler_STA(OperandAddrMode addrMode) {
-
-    OpHandler_Common("STA", addrMode, [&](uint16_t index, uint8_t v) {
+    OperandResolveAddressAndExecute("STA", addrMode, [&](uint16_t index, uint8_t v) {
         WriteU8(index, reg_a);
     });
-    return;
-
-    auto szOperand = OpAddrModeToSize(addrMode);
-    if (szOperand == 2) {
-        // 8bit
-        uint8_t v = Fetch8();
-        switch(addrMode) {
-            case OperandAddrMode::Zeropage :
-                SetStepResult("STA $%02x", v);
-                WriteU8(v, reg_a);
-                break;
-            case OperandAddrMode::ZeropageX :
-                SetStepResult("STA $%02x,x", v);
-                v += reg_x;
-                WriteU8(v, reg_a);
-                break;
-            case OperandAddrMode::ZeroPageIndX :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
-                SetStepResult("STA $(%02x,x)", v);
-                v += reg_x;
-                v = ReadU16(v);
-                WriteU8(v, reg_a);
-                break;
-            case OperandAddrMode::ZeroPageIndY :
-                // TODO: VERIFY!
-                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
-                SetStepResult("STA $(%02x),y", v);
-                v = ReadU16(v);
-                v += reg_y;
-                WriteU8(v, reg_a);
-                break;
-
-        }
-//        RefreshStatusFromValue(reg_a);
-
-    } else if (szOperand == 3) {
-        // 16bit
-        uint16_t v = Fetch16();
-        switch(addrMode) {
-            case OperandAddrMode::Absolute :
-                SetStepResult("STA $%04x", v);
-                WriteU8(v, reg_a);
-                break;
-            case OperandAddrMode::AbsoluteIndX :
-                SetStepResult("STA $%04x,x", v);
-                v += reg_x;
-                WriteU8(v, reg_a);
-                break;
-            case OperandAddrMode::AbsoluteIndY :
-                SetStepResult("STA $%04x,y", v);
-                v += reg_y;
-                WriteU8(v, reg_a);
-                break;
-        }
-        RefreshStatusFromValue(reg_a);
-    }
 }
 

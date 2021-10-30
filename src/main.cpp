@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
     cpu.Reset(offset);
     cpu.SetDebug(kDebugFlags::StepDisAsm, true);
     cpu.SetDebug(kDebugFlags::StepCPUReg, true);
+    //cpu.SetDebug(kDebugFlags::MemoryRead, true);
     HexDump(cpu.RAMPtr(), 0x4100, 16);
     while(cpu.Step()) {
         HexDump(cpu.RAMPtr(), 0x4100, 16);

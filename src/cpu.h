@@ -184,6 +184,9 @@ public:
 
     void SetDebug(kDebugFlags flag, bool enable);
 
+    // TEMP - remove this to protected later..
+    void WriteU8(uint32_t index, uint8_t value);
+
 protected:
     bool TryDecode();
     bool TryDecodeInternal();
@@ -204,7 +207,7 @@ protected:
     uint8_t ReadU8(uint32_t index);
     uint16_t ReadU16(uint32_t index);
     uint32_t ReadU32(uint32_t index);
-    void WriteU8(uint32_t index, uint8_t value);
+//    void WriteU8(uint32_t index, uint8_t value);
     void WriteU16(uint32_t index, uint16_t value);
     void WriteU32(uint32_t index, uint32_t value);
 
@@ -214,7 +217,9 @@ protected:
     uint16_t Pop16();
 private:
     using OpHandlerActionDelegate = std::function<void(uint16_t index, uint8_t v)>;
-    void OpHandler_Common(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action);
+    void OperandResolveAddressAndExecute(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action);
+    void InitializeOpGroup01();
+    void InitializeOpGroup10();
 
     void OpHandler_LDA(OperandAddrMode addrMode);
     void OpHandler_STA(OperandAddrMode addrMode);
