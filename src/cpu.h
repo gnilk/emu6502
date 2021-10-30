@@ -24,6 +24,7 @@ enum class CpuOperands : uint8_t {
     PLP = 0x28,
     AND_IMM = 0x29,
     SEC = 0x38,
+    RTI = 0x40,
     PHA = 0x48,
     EOR_IMM = 0x49,
     CLI = 0x48,

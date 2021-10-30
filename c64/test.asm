@@ -1,17 +1,13 @@
     * = $4000 "main"
 start:
-    bpl subroutine
-    bmi subroutine
-    bvc subroutine
-    bvs subroutine
-    bcc subroutine
-    bcs subroutine
-    bne subroutine
-    beq subroutine
+    lda #$42
+    asl
+    rol
+    rol
+    rol
 
     brk
 subroutine:
-    brk
+    lda #$40
     rts
     * = $4100
-value: .byte $80

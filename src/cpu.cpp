@@ -86,282 +86,6 @@ void CPU::Initialize() {
 
     debugFlags = kDebugFlags::None;
 
-    //
-    // TODO: Consider putting these somewhere else as this will blow up quite heavily...
-    //
-    instructions[CpuOperands::CLC] = {
-            CpuOperands::CLC, 1, "CLC", [this](){
-                mstatus.set(CpuFlag::Carry, false);
-//                UpdateStatus(kCpuFlags::kFlag_Carry, false);
-                SetStepResult("CLC");
-            }
-    };
-
-    instructions[CpuOperands::SEC] = {
-            CpuOperands::SEC, 1, "SEC", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_Carry, true);
-                mstatus.set(CpuFlag::Carry);
-                SetStepResult("SEC");
-            }
-    };
-
-    instructions[CpuOperands::PHP] = {
-            CpuOperands::PHP, 1, "PHP", [this](){
-                // According to the emulators this is not set on reset
-                // but in the data-sheet it is said to be '1'
-                // Note: In VICE the BRK flag is also set -
-                auto current = mstatus;
-                current.set(CpuFlag::Unused);
-                current.set(CpuFlag::BreakCmd);
-
-                Push8(current.raw());
-                SetStepResult("PHP");
-            }
-    };
-
-    instructions[CpuOperands::PLP] = {
-            CpuOperands::PLP, 1, "PLP", [this](){
-                //status = Pop8();
-                auto tmp = static_cast<CpuFlags>(Pop8());
-                tmp.set(CpuFlag::Unused, false);
-                mstatus = tmp;
-                SetStepResult("PLP");
-            }
-    };
-
-    instructions[CpuOperands::PHA] = {
-            CpuOperands::PHA, 1, "PHA", [this](){
-                Push8(reg_a);
-                SetStepResult("PHA");
-            }
-    };
-
-    instructions[CpuOperands::PLA] = {
-            CpuOperands::PLA, 1, "PLA", [this](){
-                reg_a = Pop8();
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("PLA");
-            }
-    };
-
-    instructions[CpuOperands::CLD] = {
-            CpuOperands::CLD, 1, "CLD", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_DecimalMode, false);
-                mstatus.set(CpuFlag::DecimalMode, false);
-                SetStepResult("CLD");
-            }
-    };
-
-    instructions[CpuOperands::SED] = {
-            CpuOperands::SED, 1, "SED", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_DecimalMode, true);
-                mstatus.set(CpuFlag::DecimalMode, true);
-                SetStepResult("SED");
-            }
-    };
-
-    instructions[CpuOperands::CLV] = {
-            CpuOperands::CLV, 1, "CLV", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
-                mstatus.set(CpuFlag::Overflow, false);
-                SetStepResult("CLV");
-            }
-    };
-
-    instructions[CpuOperands::CLI] = {
-            CpuOperands::CLI, 1, "CLI", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
-                mstatus.set(CpuFlag::InterruptDisable, false);
-                SetStepResult("CLI");
-            }
-    };
-
-    instructions[CpuOperands::SEI] = {
-            CpuOperands::SEI, 1, "SEI", [this](){
-                //UpdateStatus(kCpuFlags::kFlag_Overflow, false);
-                mstatus.set(CpuFlag::InterruptDisable, true);
-                SetStepResult("SEI");
-            }
-    };
-
-
-    instructions[CpuOperands::ORA_IMM] = {
-            CpuOperands::ORA_IMM, 2, "ORA", [this](){
-                uint8_t val = Fetch8();
-                reg_a |= val;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("ORA #$%02x", val);
-            }
-    };
-
-    instructions[CpuOperands::AND_IMM] = {
-            CpuOperands::AND_IMM, 2, "AND", [this](){
-                uint8_t val = Fetch8();
-                reg_a &= val;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("AND #$%02x", val);
-            }
-    };
-
-    instructions[CpuOperands::EOR_IMM] = {
-            CpuOperands::EOR_IMM, 2, "EOR", [this](){
-                uint8_t val = Fetch8();
-                reg_a ^= val;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("EOR #$%02x", val);
-            }
-    };
-
-
-    instructions[CpuOperands::ADC_IMM] = {
-            CpuOperands::ADC_IMM, 2, "SBC", [this](){
-                uint8_t val = Fetch8();
-                reg_a += val;
-                reg_a += mstatus[CpuFlag::Carry]?1:0;
-                if (reg_a > 255) {
-                    mstatus.set(CpuFlag::Carry, true);
-                    reg_a &= 0xff;
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                }
-
-                // TODO: V flag in Status
-
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("ADC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
-            }
-    };
-
-
-    instructions[CpuOperands::SBC_IMM] = {
-            CpuOperands::SBC_IMM, 2, "SBC", [this](){
-                uint8_t val = Fetch8();
-                reg_a -= val;
-                reg_a -= mstatus[CpuFlag::Carry]?0:1;
-
-                if (reg_a > 0) {
-                    mstatus.set(CpuFlag::Carry, true);
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                    reg_a &= 0xff;
-                }
-
-                // TODO: V flag in Status
-
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("SBC #$%02x (C:%d)",val, mstatus[CpuFlag::Carry]?1:0);
-            }
-    };
-
-    instructions[CpuOperands::TAY] = {
-            CpuOperands::TAY, 1, "TAY", [this](){
-                reg_y = reg_a;
-                RefreshStatusFromValue(reg_y);
-                SetStepResult("TAY");
-            }
-    };
-
-    instructions[CpuOperands::TYA] = {
-            CpuOperands::TYA, 1, "TYA", [this](){
-                reg_a = reg_y;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("TYA");
-            }
-    };
-
-    instructions[CpuOperands::TXA] = {
-            CpuOperands::TXA, 1, "TXA", [this](){
-                reg_a = reg_x;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("TXA");
-            }
-    };
-
-    instructions[CpuOperands::TAX] = {
-            CpuOperands::TAX, 1, "TAX", [this](){
-                reg_x = reg_a;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("TAX");
-            }
-    };
-
-    instructions[CpuOperands::DEY] = {
-            CpuOperands::DEY, 1, "DEY", [this](){
-                auto old_y = reg_y;
-                reg_y = (reg_y - 1) & 255;
-                RefreshStatusFromValue(reg_y);
-                SetStepResult("DEY (#$%02x -> #$%02x)", old_y, reg_y);
-            }
-    };
-
-    instructions[CpuOperands::DEX] = {
-            CpuOperands::DEY, 1, "DEX", [this](){
-                auto old_x = reg_x;
-                reg_x = (reg_x - 1) & 255;
-                RefreshStatusFromValue(reg_x);
-                SetStepResult("DEX (#$%02x -> #$%02x)", old_x, reg_x);
-            }
-    };
-
-    instructions[CpuOperands::INY] = {
-            CpuOperands::INY, 1, "INY", [this](){
-                auto old_y = reg_y;
-                reg_y = (reg_y + 1) & 255;
-                RefreshStatusFromValue(reg_y);
-                SetStepResult("INY (#$%02x -> #$%02x)", old_y, reg_y);
-            }
-    };
-
-    instructions[CpuOperands::INX] = {
-            CpuOperands::INX, 1, "INX", [this](){
-                auto old_y = reg_x;
-                reg_x = (reg_x + 1) & 255;
-                RefreshStatusFromValue(reg_x);
-                SetStepResult("INX (#$%02x -> #$%02x)", old_y, reg_x);
-            }
-    };
-
-    instructions[CpuOperands::LDA_IMM] = {
-            CpuOperands::LDA_IMM, 2, "LDA", [this](){
-                reg_a = Fetch8();
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("LDA #$%02x", reg_a);
-            }
-    };
-
-    instructions[CpuOperands::LDX_IMM] = {
-            CpuOperands::LDX_IMM, 2, "LDX", [this](){
-                reg_x = Fetch8();
-                RefreshStatusFromValue(reg_x);
-                SetStepResult("LDX #$%02x", reg_x);
-            }
-    };
-
-    instructions[CpuOperands::LDY_IMM] = {
-            CpuOperands::LDY_IMM, 2, "LDY", [this](){
-                reg_y = Fetch8();
-                RefreshStatusFromValue(reg_y);
-                SetStepResult("LDY #$%02x", reg_y);
-            }
-    };
-
-    instructions[CpuOperands::LDA_ABS] = {
-            CpuOperands::LDA_ABS, 3, "LDA", [this](){
-                uint16_t ofs = Fetch16();
-                uint8_t value = ReadU8(ofs);
-                reg_a = value;
-                RefreshStatusFromValue(reg_a);
-                SetStepResult("LDA $%04x  ($%04x => $02x)", ofs, ofs, value);
-            }
-    };
-
-    instructions[CpuOperands::STA] = {
-            CpuOperands::STA, 3, "STA", [this](){
-                uint16_t ofs = Fetch16();
-                WriteU8(ofs, reg_a);
-                SetStepResult("STA $%04x (#$%02x => $%04x)", ofs, reg_a, ofs);
-            }
-    };
 
     instructions[CpuOperands::JSR] = {
             CpuOperands::JSR, 3, "JSR", [this](){
@@ -901,6 +625,7 @@ void CPU::InitializeOpGroup01() {
 // Initialize operand group for {"ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",},
 void CPU::InitializeOpGroup10() {
 
+    // ASL
     opGroup10.handlers[0] = [this](OperandAddrMode addrMode){
         OperandResolveAddressAndExecute("ASL", addrMode, [&](uint16_t index, uint8_t v) {
             if (addrMode == OperandAddrMode::Accumulator) {
@@ -928,6 +653,40 @@ void CPU::InitializeOpGroup10() {
             }
         });
     };
+
+
+    // ROL
+    opGroup10.handlers[1] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("ROL", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Accumulator) {
+                reg_a = reg_a << 1;
+                reg_a |= mstatus[CpuFlag::Carry]?1:0;
+
+                if (reg_a > 255) {
+                    mstatus.set(CpuFlag::Carry, true);
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
+                }
+                reg_a = reg_a & 255;
+                RefreshStatusFromValue(reg_a);
+            } else {
+                // Any non-immediate mode operand will load from/write to memory..
+                uint16_t val = ReadU8(index);
+                val = val << 1;
+                val |= mstatus[CpuFlag::Carry]?1:0;
+                if (val > 255) {
+                    mstatus.set(CpuFlag::Carry, true);
+                } else {
+                    mstatus.set(CpuFlag::Carry, false);
+                }
+                v = val & 255;
+
+                WriteU8(index, v);
+                RefreshStatusFromValue(v);
+            }
+        });
+    };
+
 
 }
 
@@ -985,10 +744,26 @@ bool CPU::TryDecodeLeftovers(uint8_t incoming) {
 
     auto op = opSpecial[incoming];
     printf("%s\n", op.name.c_str());
-    if (op.size > 1) {
-        for (int i=1; i<op.size;i++) {
-            Fetch8();
+    switch(static_cast<CpuOperands>(incoming)) {
+        case CpuOperands::JSR : {
+            uint16_t ofs = Fetch16();
+            uint16_t ipReturn = ip;
+            SetStepResult("JSR $%04x", ofs);
+            ip = ofs;
+            Push16(ipReturn);
         }
+        break;
+        case CpuOperands::RTS : {
+            uint16_t ofs = Pop16();
+            SetStepResult("RTS  (* -> $%04x)", ofs);
+            ip = ofs;
+        }
+        break;
+        case CpuOperands::RTI : {
+            printf("RTI not supported!!!!!!!!!!!!!!!!!!\n");
+            exit(1);
+        }
+        break;
     }
     return true;
 }
