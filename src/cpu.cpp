@@ -69,6 +69,7 @@ kDebugFlags operator |= (kDebugFlags &lhs, kDebugFlags rhs) {
 
 
 CPU::CPU() : ram(nullptr), mstatus(0) {
+    InitializeOpGroup00();
     InitializeOpGroup01();
     InitializeOpGroup10();
 }
@@ -267,7 +268,7 @@ static OperandGroup opGroup00={
                 OperandAddrMode::Immediate,       // 000
                 OperandAddrMode::Zeropage,        // 001
                 OperandAddrMode::Invalid,         // 010      INVALID
-                OperandAddrMode::AbsoluteIndY,    // 011
+                OperandAddrMode::Absolute,        // 011
                 OperandAddrMode::Invalid,         // 100      INVALID
                 OperandAddrMode::ZeropageX,       // 101
                 OperandAddrMode::Invalid,         // 110      INVALID
@@ -288,13 +289,13 @@ static std::map<uint8_t, OperandSpecial> opSpecial={
 };
 
 bool CPU::TryDecode() {
-
+    auto ipCurrent = ip;
     if (!TryDecodeInternal()) {
         return false;
     }
 
     if((debugFlags & kDebugFlags::StepDisAsm) == kDebugFlags::StepDisAsm) {
-        printf("%s\n", lastStepResult.c_str());
+        printf("$%04x    %s\n", ipCurrent, lastStepResult.c_str());
     }
     if ((debugFlags & kDebugFlags::StepCPUReg) == kDebugFlags::StepCPUReg) {
         printf("ADDR AR XR YR SP 01 NV-BDIZC\n");
@@ -508,7 +509,59 @@ bool CPU::TryDecodeBranches(uint8_t incoming) {
 
     return true;
 }
+void CPU::InitializeOpGroup00() {
+    //    static OperandGroup opGroup00={
+    //            .names = {"---", "BIT", "JMP", "JMP", "STY", "LDY", "CPY", "CPX", },
+    opGroup00.handlers[0] = [this](OperandAddrMode addrMode) {
+        printf("Invalid op code!!!\n");
+        SetStepResult("INVALID!");
+    };
+    opGroup00.handlers[1] = [this](OperandAddrMode addrMode) {
+        OperandResolveAddressAndExecute("BIT", addrMode, [&](uint16_t index, uint8_t v) {
+            v = ReadU8(index);
+            if (!(v & reg_a)) {
+                mstatus.set(CpuFlag::Zero, true);
+            } else {
+                mstatus.set(CpuFlag::Zero, false);
+            }
 
+        });
+    };
+
+    opGroup00.handlers[2] = [this](OperandAddrMode addrMode) {
+        OperandResolveAddressAndExecute("JMP", addrMode, [&](uint16_t index, uint8_t v) {
+            ip = index;
+        });
+    };
+
+    // This is the indirect jump
+    opGroup00.handlers[3] = [this](OperandAddrMode addrMode) {
+        OperandResolveAddressAndExecute("JMP", addrMode, [&](uint16_t index, uint8_t v) {
+            uint16_t jmpAddress = ReadU16(index);
+            ip = jmpAddress;
+        });
+    };
+
+    opGroup00.handlers[4] = [this](OperandAddrMode addrMode) {
+        OperandResolveAddressAndExecute("STY", addrMode, [&](uint16_t index, uint8_t v) {
+            WriteU8(index, reg_y);
+        });
+    };
+
+    opGroup00.handlers[5] = [this](OperandAddrMode addrMode) {
+        OperandResolveAddressAndExecute("LDY", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_y = v;
+            } else {
+                reg_y = ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_y);
+        });
+    };
+    // TODO: Implement CPY/CPX
+
+
+}
 
 void CPU::InitializeOpGroup01() {
     //
@@ -844,7 +897,7 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     uint8_t op_ext_idx = op_ext >> 5;
 
     static OperandGroup *opGroups[4]={
-            nullptr,
+            &opGroup00,
             &opGroup01,
             &opGroup10,
             nullptr
@@ -858,7 +911,7 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     const std::string &name = opGroup->Name(op_ext_idx);
     auto nBytes = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
     auto szOperand = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
-    printf("%s, sz: %d (op_base: %d)\n", name.c_str(), szOperand,op_base);
+    //printf("%s, sz: %d (op_base: %d)\n", name.c_str(), szOperand,op_base);
 
     if (opGroup->handlers[op_ext_idx] != nullptr) {
         opGroup->handlers[op_ext_idx](opGroup->AddrMode(addrmode_idx));

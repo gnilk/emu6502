@@ -164,6 +164,7 @@ enum class OperandAddrMode : uint8_t {
     ZeroPageIndX = 7,    // (Zeropage),x
     ZeroPageIndY = 8,    // (Zeropage),y
     Accumulator  = 9,    // Directly affecting accumulator
+    Indirect     = 10,   // (....)
 };
 
 class CPU {
@@ -221,6 +222,7 @@ private:
     void OperandResolveAddressAndExecute(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action);
     void InitializeOpGroup01();
     void InitializeOpGroup10();
+    void InitializeOpGroup00();
 
     void OpHandler_LDA(OperandAddrMode addrMode);
     void OpHandler_STA(OperandAddrMode addrMode);

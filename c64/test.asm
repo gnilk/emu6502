@@ -1,13 +1,8 @@
     * = $4000 "main"
 start:
-    dec value
-    dec value
-    dec value
-    dec value
-    dec value
+    ldy #$40
+    sty $4100
+    ldy #$00
+    ldy $4100
     brk
-subroutine:
-    lda #$40
-    rts
     * = $4100
-value: .byte 01
