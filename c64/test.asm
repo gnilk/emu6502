@@ -1,5 +1,25 @@
     * = $4000 "main"
 start:
+    lda #$01
+    lda value
+    lda value,x
+    lda value,y
+    lda $01
+    lda $80,x
+    lda ($80,x)
+    lda ($80),y
+    brk
+
+    sta $4100
+    sta $4100,x
+    sta $4100,y
+    sta $80
+    sta $80,x
+    sta ($80,x)
+    sta ($80),y
+    brk
+
+
     rti
     rts
     jsr subroutine
@@ -49,3 +69,4 @@ subroutine:
 
     rts
     * = $4100
+value: .byte $42

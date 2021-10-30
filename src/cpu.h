@@ -152,7 +152,18 @@ enum class CpuFlag : uint8_t {
 // Create an enum for those flags...
 using CpuFlags = Flags<CpuFlag>;
 
-
+enum class OperandAddrMode : uint8_t {
+    Invalid      = 0,    // Invalid operand size
+    Immediate    = 1,    // Immediate mode
+    Absolute     = 2,    // Absolute
+    AbsoluteIndX = 3,    // Absolute
+    AbsoluteIndY = 4,    // Absolute
+    Zeropage     = 5,    // Zeropage
+    ZeropageX    = 6,    // Zeropage,x
+    ZeroPageIndX = 7,    // (Zeropage),x
+    ZeroPageIndY = 8,    // (Zeropage),y
+    Accumulator  = 9,    // Directly affecting accumulator
+};
 
 class CPU {
 public:
@@ -174,7 +185,8 @@ public:
     void SetDebug(kDebugFlags flag, bool enable);
 
 protected:
-    bool TryDecode2();
+    bool TryDecode();
+    bool TryDecodeInternal();
     bool TryDecodeOddities(uint8_t incoming);
     bool TryDecodeBranches(uint8_t incoming);
     bool TryDecodeOpGroup(uint8_t incoming);
@@ -200,6 +212,12 @@ protected:
     void Push16(uint16_t value);
     uint8_t Pop8();
     uint16_t Pop16();
+private:
+    using OpHandlerActionDelegate = std::function<void(uint16_t index, uint8_t v)>;
+    void OpHandler_Common(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action);
+
+    void OpHandler_LDA(OperandAddrMode addrMode);
+    void OpHandler_STA(OperandAddrMode addrMode);
 
 private:
     CpuFlags mstatus;

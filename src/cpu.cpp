@@ -391,7 +391,7 @@ void CPU::Load(const uint8_t *from, uint32_t offset, uint32_t nbytes) {
 bool CPU::Step() {
     bool res = true;
 
-    return TryDecode2();
+    return TryDecode();
 
     // TODO: Static cast here is probably wrong...
     kCpuOperands opcode = static_cast<kCpuOperands>(Fetch8());
@@ -432,6 +432,7 @@ bool CPU::Step() {
     return res;
 }
 
+
 #define OPCODE_MASK_BASE     (0b00000011)
 #define OPCODE_MASK_ADDRMODE (0b00011100)
 #define OPCODE_MASK_EXT      (0b11100000)
@@ -450,68 +451,88 @@ struct ascOperandSzAddr {
     static const size_t Accumulator  = 1;    // Directly affecting accumulator
 };
 
-enum class OperandSzAddr : uint8_t {
-    Invalid      = 0,    // Invalid operand size
-    Immediate    = 2,    // Immediate mode
-    Absolute     = 3,    // Absolute
-    AbsoluteIndX = 3,    // Absolute
-    AbsoluteIndY = 3,    // Absolute
-    Zeropage     = 2,    // Zeropage
-    ZeropageX    = 2,    // Zeropage,x
-    ZeroPageIndX = 2,    // (Zeropage),x
-    ZeroPageIndY = 2,    // (Zeropage),y
-    Accumulator  = 1,    // Directly affecting accumulator
-};
+
+
+//
+// Return full size (incl. opcode byte) of an operand based on the addressing mode
+//
+static size_t OpAddrModeToSize(OperandAddrMode addressingMode) {
+//    Invalid      = 0,    // Invalid operand size
+//    Immediate    = 2,    // Immediate mode
+//    Absolute     = 3,    // Absolute
+//    AbsoluteIndX = 3,    // Absolute
+//    AbsoluteIndY = 3,    // Absolute
+//    Zeropage     = 2,    // Zeropage
+//    ZeropageX    = 2,    // Zeropage,x
+//    ZeroPageIndX = 2,    // (Zeropage),x
+//    ZeroPageIndY = 2,    // (Zeropage),y
+//    Accumulator  = 1,    // Directly affecting accumulator
+    static std::map<OperandAddrMode, size_t> modeToSize = {
+            { OperandAddrMode::Invalid, 0 },
+            { OperandAddrMode::Immediate, 2 },
+            { OperandAddrMode::Absolute, 3 },
+            { OperandAddrMode::AbsoluteIndX, 3 },
+            { OperandAddrMode::AbsoluteIndY, 3 },
+            { OperandAddrMode::Zeropage, 2 },
+            { OperandAddrMode::ZeropageX, 2 },
+            { OperandAddrMode::ZeroPageIndX, 2 },
+            { OperandAddrMode::ZeroPageIndY, 2 },
+            { OperandAddrMode::Accumulator, 1 },
+    };
+    return modeToSize[addressingMode];
+}
 
 
 struct OperandGroup {
     [[nodiscard]] const std::string &Name(uint8_t idx) const { return names[idx]; }
-    [[nodiscard]] OperandSzAddr Size(uint8_t idx) const { return sizes[idx]; }
+    [[nodiscard]] OperandAddrMode AddrMode(uint8_t idx) const { return addrModes[idx]; }
 
     std::string names[8];
-    OperandSzAddr sizes[8];
+    OperandAddrMode addrModes[8];
+    std::function<void(OperandAddrMode addrMode)> handlers[8];
 };
 
 
 
 static OperandGroup opGroup01={
-    .names = {"ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"},
-    .sizes = {
-            OperandSzAddr::ZeroPageIndX,
-            OperandSzAddr::Zeropage,
-            OperandSzAddr::Immediate,
-            OperandSzAddr::Absolute,
-            OperandSzAddr::ZeroPageIndY,
-            OperandSzAddr::ZeropageX,
-            OperandSzAddr::AbsoluteIndY,
-            OperandSzAddr::AbsoluteIndY,
-    }
+        .names = {"ORA","AND", "EOR", "ADC", "STA", "LDA", "CMP", "SBC"},
+        .addrModes = {
+                OperandAddrMode::ZeroPageIndX,
+                OperandAddrMode::Zeropage,
+                OperandAddrMode::Immediate,
+                OperandAddrMode::Absolute,
+                OperandAddrMode::ZeroPageIndY,
+                OperandAddrMode::ZeropageX,
+                OperandAddrMode::AbsoluteIndY,
+                OperandAddrMode::AbsoluteIndX,
+        },
+        .handlers = {},
 };
 static OperandGroup opGroup10={
         .names = {"ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",},
-        .sizes = {
-                OperandSzAddr::Immediate,       // 000
-                OperandSzAddr::Zeropage,        // 001
-                OperandSzAddr::Accumulator,     // 010
-                OperandSzAddr::AbsoluteIndY,    // 011
-                OperandSzAddr::Invalid,         // 100      INVALID
-                OperandSzAddr::ZeropageX,       // 101
-                OperandSzAddr::Invalid,         // 110      INVALID
-                OperandSzAddr::AbsoluteIndX,    // 111
+        .addrModes = {
+                OperandAddrMode::Immediate,       // 000
+                OperandAddrMode::Zeropage,        // 001
+                OperandAddrMode::Accumulator,     // 010
+                OperandAddrMode::AbsoluteIndY,    // 011
+                OperandAddrMode::Invalid,         // 100      INVALID
+                OperandAddrMode::ZeropageX,       // 101
+                OperandAddrMode::Invalid,         // 110      INVALID
+                OperandAddrMode::AbsoluteIndX,    // 111
         }
 };
 
 static OperandGroup opGroup00={
         .names = {"---", "BIT", "JMP", "JMP", "STY", "LDY", "CPY", "CPX", },
-        .sizes = {
-                OperandSzAddr::Immediate,       // 000
-                OperandSzAddr::Zeropage,        // 001
-                OperandSzAddr::Invalid,         // 010      INVALID
-                OperandSzAddr::AbsoluteIndY,    // 011
-                OperandSzAddr::Invalid,         // 100      INVALID
-                OperandSzAddr::ZeropageX,       // 101
-                OperandSzAddr::Invalid,         // 110      INVALID
-                OperandSzAddr::AbsoluteIndX,    // 111
+        .addrModes = {
+                OperandAddrMode::Immediate,       // 000
+                OperandAddrMode::Zeropage,        // 001
+                OperandAddrMode::Invalid,         // 010      INVALID
+                OperandAddrMode::AbsoluteIndY,    // 011
+                OperandAddrMode::Invalid,         // 100      INVALID
+                OperandAddrMode::ZeropageX,       // 101
+                OperandAddrMode::Invalid,         // 110      INVALID
+                OperandAddrMode::AbsoluteIndX,    // 111
         }
 };
 
@@ -522,10 +543,60 @@ struct OperandSpecial {
 };
 
 static std::map<uint8_t, OperandSpecial> opSpecial={
-    { 0x20, { .size = 3, .name = "JSR" }},
-    { 0x40, { .size = 1, .name = "RTI" }},
-    { 0x60, { .size = 1, .name = "RTS" }}
+        { 0x20, { .size = 3, .name = "JSR" }},
+        { 0x40, { .size = 1, .name = "RTI" }},
+        { 0x60, { .size = 1, .name = "RTS" }}
 };
+
+bool CPU::TryDecode() {
+
+    if (!TryDecodeInternal()) {
+        return false;
+    }
+
+    if((debugFlags & kDebugFlags::StepDisAsm) == kDebugFlags::StepDisAsm) {
+        printf("%s\n", lastStepResult.c_str());
+    }
+    if ((debugFlags & kDebugFlags::StepCPUReg) == kDebugFlags::StepCPUReg) {
+        printf("ADDR AR XR YR SP 01 NV-BDIZC\n");
+        printf("%04x %02x %02x %02x %02x %02x %s\n",
+               ip, reg_a, reg_x, reg_y, sp & 0xff, ReadU8(0x01), ToBinaryU8(mstatus.raw()).c_str());
+
+        // Make this line optional..
+        printf("\n");
+    }
+    return true;
+}
+
+//
+// More generic 6502 disassembler code
+//
+bool CPU::TryDecodeInternal() {
+    bool res = true;
+
+    uint8_t incoming = Fetch8();
+    printf("%02x\n",incoming);
+    if (incoming == 0x00) return false;
+
+    // Handle instructions which are a bit odd...
+    if (TryDecodeOddities(incoming)) {
+        return true;
+    }
+    if (TryDecodeBranches(incoming)) {
+        return true;
+    }
+    if (TryDecodeOpGroup(incoming)) {
+        return true;
+    }
+    if (TryDecodeLeftovers(incoming)) {
+        return true;
+    }
+
+
+    printf("ERROR: Invalid or unhandled op-code: %02x\n", incoming);
+    return false;
+}
+
 
 // This decodes all (hopefully) instructions
 bool CPU::TryDecodeOddities(uint8_t incoming) {
@@ -562,7 +633,8 @@ bool CPU::TryDecodeOddities(uint8_t incoming) {
     }
     return false;
 }
-
+// 189, 0xbd, %010111101
+// 16, 0x10,  %000010000
 bool CPU::TryDecodeBranches(uint8_t incoming) {
     //
     // Handle conditional branches...
@@ -571,7 +643,7 @@ bool CPU::TryDecodeBranches(uint8_t incoming) {
     // 87654321
     // xxy10000
     //
-    if ((incoming &0x10) != 0x10) {
+    if ((incoming &0x1F) != 0x10) {
         return false;
     }
     static std::string names[]={
@@ -597,6 +669,12 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     uint8_t op_ext = incoming & OPCODE_MASK_EXT;
     uint8_t op_ext_idx = op_ext >> 5;
 
+    //
+    // TEST TEST
+    //
+    opGroup01.handlers[4] = [this](OperandAddrMode addrMode){ this->OpHandler_STA(addrMode); };
+    opGroup01.handlers[5] = [this](OperandAddrMode addrMode){ this->OpHandler_LDA(addrMode); };
+
     static OperandGroup *opGroups[4]={
             nullptr,
             &opGroup01,
@@ -610,13 +688,19 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     }
 
     const std::string &name = opGroup->Name(op_ext_idx);
-    auto szOperand = to_underlying(opGroup->Size(addrmode_idx));
-    printf("%s, sz: %d\n", name.c_str(), szOperand);
-    if (szOperand > 1) {
-        // Fetch remaining...
-        for (int i=0;i<szOperand-1;i++) {
-            Fetch8();
+    auto nBytes = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
+    auto szOperand = OpAddrModeToSize(opGroup->AddrMode(addrmode_idx));
+    printf("%s, sz: %d (op_base: %d)\n", name.c_str(), szOperand,op_base);
+    if (opGroup->handlers[op_ext_idx] != nullptr) {
+        opGroup->handlers[op_ext_idx](opGroup->AddrMode(addrmode_idx));
+    } else {
+        if (szOperand > 1) {
+            // Fetch remaining...
+            for (int i=0;i<szOperand-1;i++) {
+                Fetch8();
+            }
         }
+
     }
     return true;
 }
@@ -638,30 +722,8 @@ bool CPU::TryDecodeLeftovers(uint8_t incoming) {
 }
 
 
-bool CPU::TryDecode2() {
-    bool res = true;
 
-    uint8_t incoming = Fetch8();
-    printf("%02x\n",incoming);
-    if (incoming == 0x00) return false;
 
-    // Handle instructions which are a bit odd...
-    if (TryDecodeOddities(incoming)) {
-        return true;
-    }
-    if (TryDecodeBranches(incoming)) {
-        return true;
-    }
-    if (TryDecodeOpGroup(incoming)) {
-        return true;
-    }
-    if (TryDecodeLeftovers(incoming)) {
-        return true;
-    }
-
-    printf("ERROR: Invalid or unhandled op-code: %02x\n", incoming);
-    return false;
-}
 
 
 const std::string CPU::ToBinaryU8(uint8_t byte) {
@@ -804,5 +866,203 @@ void CPU::WriteU32(uint32_t index, uint32_t value) {
     }
     auto *ptr = reinterpret_cast<uint32_t *>(&ram[index]);
     *ptr = value;
+}
+
+// This handles both LDA/STA/ORA/AND/EOR
+void CPU::OpHandler_Common(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action) {
+    auto szOperand = OpAddrModeToSize(addrMode);
+    if (szOperand == 2) {
+        uint8_t v = Fetch8();
+        switch(addrMode) {
+            case OperandAddrMode::Immediate :
+                SetStepResult("%s #$%02x", name.c_str(), v);
+                Action(0, v);
+                break;
+            case OperandAddrMode::Zeropage :
+                SetStepResult("%s $%02x", name.c_str(), v);
+                Action(v,v);
+                break;
+            case OperandAddrMode::ZeropageX :
+                SetStepResult("%s $%02x,x",name.c_str(), v);
+                v += reg_x;
+                Action(v,v);
+                break;
+            case OperandAddrMode::ZeroPageIndX :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("%s $(%02x,x)", name.c_str(), v);
+                v += reg_x;
+                v = ReadU16(v);
+                Action(v,ReadU8(v));
+                break;
+            case OperandAddrMode::ZeroPageIndY :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("%s $(%02x),y", name.c_str(), v);
+                v = ReadU16(v);
+                v += reg_y;
+                Action(v,ReadU8(v));
+                break;
+        }
+    } else if (szOperand == 3) {
+        uint16_t v = Fetch16();
+        switch(addrMode) {
+            case OperandAddrMode::Absolute :
+                SetStepResult("%s $%04x", name.c_str(), v);
+                Action(v,0);
+                break;
+            case OperandAddrMode::AbsoluteIndX :
+                SetStepResult("%s $%04x,x", name.c_str(), v);
+                v += reg_x;
+                Action(v, 0);
+                break;
+            case OperandAddrMode::AbsoluteIndY :
+                SetStepResult("%s $%04x,y", name.c_str(), v);
+                v += reg_y;
+                Action(v, 0);
+                break;
+        }
+
+    }
+
+}
+
+/// OpCode handlers
+void CPU::OpHandler_LDA(OperandAddrMode addrMode) {
+
+    OpHandler_Common("LDA", addrMode, [&](uint16_t index, uint8_t v){
+        if (OpAddrModeToSize(addrMode) == 2) {
+            reg_a = v;
+        } else {
+            reg_a = ReadU8(index);
+        }
+        RefreshStatusFromValue(reg_a);
+    });
+    return;
+
+
+    auto szOperand = OpAddrModeToSize(addrMode);
+    if (szOperand == 2) {
+        // 8bit
+        uint8_t v = Fetch8();
+        switch(addrMode) {
+            case OperandAddrMode::Immediate :
+                SetStepResult("LDA #$%02x", v);
+                reg_a = v;
+                break;
+            case OperandAddrMode::Zeropage :
+                SetStepResult("LDA $%02x", v);
+                reg_a = ReadU8(v);
+                break;
+            case OperandAddrMode::ZeropageX :
+                SetStepResult("*LDA $%02x,x", v);
+                v += reg_x;
+                reg_a = ReadU8(v);
+                break;
+            case OperandAddrMode::ZeroPageIndX :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("LDA $(%02x,x)", v);
+                v += reg_x;
+                v = ReadU16(v);
+                reg_a = ReadU8(v);
+                break;
+            case OperandAddrMode::ZeroPageIndY :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("LDA $(%02x),y", v);
+                v = ReadU16(v);
+                v += reg_y;
+                reg_a = ReadU8(v);
+                break;
+
+        }
+        RefreshStatusFromValue(reg_a);
+
+    } else if (szOperand == 3) {
+        // 16bit
+        uint16_t v = Fetch16();
+        switch(addrMode) {
+            case OperandAddrMode::Absolute :
+                SetStepResult("LDA $%04x", v);
+                reg_a = ReadU8(v);
+                break;
+            case OperandAddrMode::AbsoluteIndX :
+                SetStepResult("LDA $%04x,x", v);
+                v += reg_x;
+                reg_a = ReadU8(v);
+                break;
+            case OperandAddrMode::AbsoluteIndY :
+                SetStepResult("LDA $%04x,y", v);
+                v += reg_y;
+                reg_a = ReadU8(v);
+                break;
+        }
+        RefreshStatusFromValue(reg_a);
+    }
+}
+
+void CPU::OpHandler_STA(OperandAddrMode addrMode) {
+
+    OpHandler_Common("STA", addrMode, [&](uint16_t index, uint8_t v) {
+        WriteU8(index, reg_a);
+    });
+    return;
+
+    auto szOperand = OpAddrModeToSize(addrMode);
+    if (szOperand == 2) {
+        // 8bit
+        uint8_t v = Fetch8();
+        switch(addrMode) {
+            case OperandAddrMode::Zeropage :
+                SetStepResult("STA $%02x", v);
+                WriteU8(v, reg_a);
+                break;
+            case OperandAddrMode::ZeropageX :
+                SetStepResult("STA $%02x,x", v);
+                v += reg_x;
+                WriteU8(v, reg_a);
+                break;
+            case OperandAddrMode::ZeroPageIndX :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("STA $(%02x,x)", v);
+                v += reg_x;
+                v = ReadU16(v);
+                WriteU8(v, reg_a);
+                break;
+            case OperandAddrMode::ZeroPageIndY :
+                // TODO: VERIFY!
+                //  see: https://www.c64-wiki.com/wiki/Indexed-indirect_addressing
+                SetStepResult("STA $(%02x),y", v);
+                v = ReadU16(v);
+                v += reg_y;
+                WriteU8(v, reg_a);
+                break;
+
+        }
+//        RefreshStatusFromValue(reg_a);
+
+    } else if (szOperand == 3) {
+        // 16bit
+        uint16_t v = Fetch16();
+        switch(addrMode) {
+            case OperandAddrMode::Absolute :
+                SetStepResult("STA $%04x", v);
+                WriteU8(v, reg_a);
+                break;
+            case OperandAddrMode::AbsoluteIndX :
+                SetStepResult("STA $%04x,x", v);
+                v += reg_x;
+                WriteU8(v, reg_a);
+                break;
+            case OperandAddrMode::AbsoluteIndY :
+                SetStepResult("STA $%04x,y", v);
+                v += reg_y;
+                WriteU8(v, reg_a);
+                break;
+        }
+        RefreshStatusFromValue(reg_a);
+    }
 }
 
