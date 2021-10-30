@@ -983,7 +983,7 @@ void CPU::SetDebug(kDebugFlags flag, bool enable) {
     }
 }
 
-
+// Set the setp result, called with information about instruction
 void CPU::SetStepResult(const char *format, ...) {
     va_list values;
     va_start(values, format);
@@ -1101,7 +1101,13 @@ void CPU::WriteU32(uint32_t index, uint32_t value) {
     *ptr = value;
 }
 
-// This handles both LDA/STA/ORA/AND/EOR
+// Prepare and solve addressing scheme...
+// Action is called with INDEX = resolved addressing (all types), V = if required to read
+// This is used for any (more?) operands in opGroup 00, 01, 10
+// see: https://llx.com/Neil/a2/opcodes.html
+//
+// Will also call SetStepResult with string formatted properly (address, indexing, etc..)
+//
 void CPU::OperandResolveAddressAndExecute(const std::string &name, OperandAddrMode addrMode, OpHandlerActionDelegate Action) {
     auto szOperand = OpAddrModeToSize(addrMode);
     if ((szOperand == 1) && (addrMode == OperandAddrMode::Accumulator)) {
