@@ -4,7 +4,9 @@
 // TODO:
 //   - Overflow ('V') flags is not implemented
 //   - Consider using a 'Tick' based system instead which would add support for peripherals (VIC, SID) and enable them to be cycle exact..
-//
+//   - Implement decimal mode
+//   - Test basic ROM (make a simple renderer for textmode 40x25)
+//   - Simple VIC - frame based...
 //
 
 #include "cpu.h"
@@ -507,6 +509,7 @@ bool CPU::TryDecodeBranches(uint8_t incoming) {
     return true;
 }
 
+
 void CPU::InitializeOpGroup01() {
     //
     // Setup opGroup handlers, these are called during decoding from 'TryDecodeOpGroup' when processing op-codes in
@@ -563,21 +566,7 @@ void CPU::InitializeOpGroup01() {
 
     opGroup01.handlers[3] = [this](OperandAddrMode addrMode){
         OperandResolveAddressAndExecute("ADC", addrMode, [&](uint16_t index, uint8_t v) {
-            if (addrMode == OperandAddrMode::Immediate) {
-                reg_a += v;
-            } else {
-                // Any non-immediate mode operand will load from memory..
-                reg_a += ReadU8(index);
-            }
-
-            reg_a += mstatus[CpuFlag::Carry] ? 1 : 0;
-            if (reg_a > 255) {
-                mstatus.set(CpuFlag::Carry, true);
-                reg_a &= 0xff;
-            } else {
-                mstatus.set(CpuFlag::Carry, false);
-            }
-            RefreshStatusFromValue(reg_a);
+            EmulateADC(addrMode, index, v);
         });
     };
 
@@ -603,24 +592,49 @@ void CPU::InitializeOpGroup01() {
 
     opGroup01.handlers[7] = [this](OperandAddrMode addrMode){
         OperandResolveAddressAndExecute("SBC", addrMode, [&](uint16_t index, uint8_t v) {
-            if (addrMode == OperandAddrMode::Immediate) {
-                reg_a -= v;
-            } else {
-                // Any non-immediate mode operand will load from memory..
-                reg_a -= ReadU8(index);
-            }
-
-            reg_a -= mstatus[CpuFlag::Carry] ? 1 : 0;
-            if (reg_a > 0) {
-                mstatus.set(CpuFlag::Carry, true);
-            } else {
-                mstatus.set(CpuFlag::Carry, false);
-                reg_a &= 0xff;
-            }
-            RefreshStatusFromValue(reg_a);
+            EmulateSBC(addrMode, index, v);
         });
     };
 }
+
+void CPU::EmulateADC(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Immediate) {
+        reg_a += v;
+    } else {
+        // Any non-immediate mode operand will load from memory..
+        reg_a += ReadU8(index);
+    }
+
+    reg_a += mstatus[CpuFlag::Carry] ? 1 : 0;
+    if (reg_a > 255) {
+        mstatus.set(CpuFlag::Carry, true);
+        reg_a &= 0xff;
+    } else {
+        mstatus.set(CpuFlag::Carry, false);
+    }
+    RefreshStatusFromValue(reg_a);
+
+}
+
+void CPU::EmulateSBC(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Immediate) {
+        reg_a -= v;
+    } else {
+        // Any non-immediate mode operand will load from memory..
+        reg_a -= ReadU8(index);
+    }
+
+    reg_a -= mstatus[CpuFlag::Carry] ? 1 : 0;
+    if (reg_a > 0) {
+        mstatus.set(CpuFlag::Carry, true);
+    } else {
+        mstatus.set(CpuFlag::Carry, false);
+        reg_a &= 0xff;
+    }
+    RefreshStatusFromValue(reg_a);
+}
+
+
 
 // Initialize operand group for {"ASL", "ROL", "LSR", "ROR", "STX", "LDX", "DEC", "INC",},
 void CPU::InitializeOpGroup10() {
@@ -628,66 +642,189 @@ void CPU::InitializeOpGroup10() {
     // ASL
     opGroup10.handlers[0] = [this](OperandAddrMode addrMode){
         OperandResolveAddressAndExecute("ASL", addrMode, [&](uint16_t index, uint8_t v) {
-            if (addrMode == OperandAddrMode::Accumulator) {
-                reg_a = reg_a << 1;
-                if (reg_a > 255) {
-                    mstatus.set(CpuFlag::Carry, true);
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                }
-                reg_a = reg_a & 255;
-                RefreshStatusFromValue(reg_a);
-            } else {
-                // Any non-immediate mode operand will load from/write to memory..
-                uint16_t val = ReadU8(index);
-                val = val << 1;
-                if (val > 255) {
-                    mstatus.set(CpuFlag::Carry, true);
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                }
-                v = val & 255;
-
-                WriteU8(index, v);
-                RefreshStatusFromValue(v);
-            }
+            EmulateASL(addrMode, index, v);
         });
     };
-
 
     // ROL
     opGroup10.handlers[1] = [this](OperandAddrMode addrMode){
         OperandResolveAddressAndExecute("ROL", addrMode, [&](uint16_t index, uint8_t v) {
-            if (addrMode == OperandAddrMode::Accumulator) {
-                reg_a = reg_a << 1;
-                reg_a |= mstatus[CpuFlag::Carry]?1:0;
-
-                if (reg_a > 255) {
-                    mstatus.set(CpuFlag::Carry, true);
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                }
-                reg_a = reg_a & 255;
-                RefreshStatusFromValue(reg_a);
-            } else {
-                // Any non-immediate mode operand will load from/write to memory..
-                uint16_t val = ReadU8(index);
-                val = val << 1;
-                val |= mstatus[CpuFlag::Carry]?1:0;
-                if (val > 255) {
-                    mstatus.set(CpuFlag::Carry, true);
-                } else {
-                    mstatus.set(CpuFlag::Carry, false);
-                }
-                v = val & 255;
-
-                WriteU8(index, v);
-                RefreshStatusFromValue(v);
-            }
+            EmulateROL(addrMode, index, v);
         });
     };
 
+    // LSR
+    opGroup10.handlers[2] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("LSR", addrMode, [&](uint16_t index, uint8_t v) {
+            EmulateLSR(addrMode, index, v);
+        });
+    };
 
+    // ROR
+    opGroup10.handlers[3] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("ROR", addrMode, [&](uint16_t index, uint8_t v) {
+            EmulateROR(addrMode, index, v);
+        });
+    };
+
+    // STX
+    opGroup10.handlers[4] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("STX", addrMode, [&](uint16_t index, uint8_t v) {
+            WriteU8(index, reg_x);
+        });
+    };
+
+    // LDX
+    opGroup10.handlers[5] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("LDX", addrMode, [&](uint16_t index, uint8_t v) {
+            if (addrMode == OperandAddrMode::Immediate) {
+                reg_x = v;
+            } else {
+                // Any non-immediate mode operand will load from memory..
+                reg_x = ReadU8(index);
+            }
+            RefreshStatusFromValue(reg_x);
+        });
+    };
+
+    // DEC
+    opGroup10.handlers[6] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("DEC", addrMode, [&](uint16_t index, uint8_t v) {
+            // Any non-immediate mode operand will load from memory..
+            int val = ReadU8(index);
+            val = val - 1;
+            WriteU8(index, val & 255);
+            RefreshStatusFromValue(reg_x);
+        });
+    };
+
+    // INC
+    opGroup10.handlers[7] = [this](OperandAddrMode addrMode){
+        OperandResolveAddressAndExecute("INC", addrMode, [&](uint16_t index, uint8_t v) {
+            // Any non-immediate mode operand will load from memory..
+            int val = ReadU8(index);
+            val = val + 1;
+            WriteU8(index, val & 255);
+            RefreshStatusFromValue(reg_x);
+        });
+    };
+
+}
+
+void CPU::EmulateLSR(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Accumulator) {
+
+        bool carry = (reg_a & 0x01)? true : false;  // I know expr. can be simplified, but this easier to read - for me.....
+        reg_a = reg_a >> 1;
+        if (carry) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        reg_a = reg_a & 255;
+        RefreshStatusFromValue(reg_a);
+        mstatus.set(CpuFlag::Negative, false);  // Negative flag _ALWAYS_ cleared
+    } else {
+        // Any non-immediate mode operand will load from/write to memory..
+        uint16_t val = ReadU8(index);
+        bool carry = (val & 0x01)? true : false; // I know expr. can be simplified, but this easier to read - for me.....
+        val = val >> 1;
+        if (carry) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        v = val & 255;
+
+        WriteU8(index, v);
+        RefreshStatusFromValue(v);
+        mstatus.set(CpuFlag::Negative, false);  // Negative flag _ALWAYS_ cleared
+    }
+}
+void CPU::EmulateROL(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Accumulator) {
+        reg_a = reg_a << 1;
+        reg_a |= mstatus[CpuFlag::Carry]?1:0;
+
+        if (reg_a > 255) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        reg_a = reg_a & 255;
+        RefreshStatusFromValue(reg_a);
+    } else {
+        // Any non-immediate mode operand will load from/write to memory..
+        uint16_t val = ReadU8(index);
+        val = val << 1;
+        val |= mstatus[CpuFlag::Carry]?1:0;
+        if (val > 255) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        v = val & 255;
+
+        WriteU8(index, v);
+        RefreshStatusFromValue(v);
+    }
+}
+
+void CPU::EmulateROR(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Accumulator) {
+        bool carry = (reg_a & 0x01)? true : false;  // I know expr. can be simplified, but this easier to read - for me.....
+        reg_a = reg_a >> 1;
+        reg_a |= (mstatus[CpuFlag::Carry]?0x80:0);
+
+        if (carry) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        reg_a = reg_a & 255;
+        RefreshStatusFromValue(reg_a);
+    } else {
+        // Any non-immediate mode operand will load from/write to memory..
+        uint16_t val = ReadU8(index);
+        bool carry = (val & 0x01)? true : false;  // I know expr. can be simplified, but this easier to read - for me.....
+        val = val >> 1;
+        val |= mstatus[CpuFlag::Carry]?1:0;
+        reg_a |= (mstatus[CpuFlag::Carry]?1:0) << 0x80;
+        if (carry) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        v = val & 255;
+
+        WriteU8(index, v);
+        RefreshStatusFromValue(v);
+    }
+}
+void CPU::EmulateASL(OperandAddrMode addrMode, uint16_t index, uint8_t v) {
+    if (addrMode == OperandAddrMode::Accumulator) {
+        reg_a = reg_a << 1;
+        if (reg_a > 255) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        reg_a = reg_a & 255;
+        RefreshStatusFromValue(reg_a);
+    } else {
+        // Any non-immediate mode operand will load from/write to memory..
+        uint16_t val = ReadU8(index);
+        val = val << 1;
+        if (val > 255) {
+            mstatus.set(CpuFlag::Carry, true);
+        } else {
+            mstatus.set(CpuFlag::Carry, false);
+        }
+        v = val & 255;
+
+        WriteU8(index, v);
+        RefreshStatusFromValue(v);
+    }
 }
 
 

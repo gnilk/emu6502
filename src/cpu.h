@@ -224,6 +224,16 @@ private:
 
     void OpHandler_LDA(OperandAddrMode addrMode);
     void OpHandler_STA(OperandAddrMode addrMode);
+    // OpGroup01
+    void EmulateADC(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+    void EmulateSBC(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+
+    // OpGroup10
+    void EmulateASL(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+    void EmulateROL(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+    void EmulateLSR(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+    void EmulateROR(OperandAddrMode addrMode, uint16_t index, uint8_t v);
+
 
 private:
     CpuFlags mstatus;
