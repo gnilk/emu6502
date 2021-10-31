@@ -61,7 +61,8 @@ if (WIN32)
     endif ()
 
 elseif(APPLE)
-    # TODO
+    # TODO fix this...
+    list(APPEND src src/macOS/ui.cpp)
 endif()
 
 
@@ -69,7 +70,7 @@ endif()
 # Create the EMU target
 #
 
-add_executable(emu6502 ${src} ${imgui} ${imgui_backend} src/Win32/ui.cpp)
+add_executable(emu6502 ${src} ${imgui} ${imgui_backend})
 target_link_libraries(emu6502 ${libs})
 target_include_directories(emu6502 PUBLIC ext/imgui/)
 target_include_directories(emu6502 PUBLIC ext/imgui/backends)
