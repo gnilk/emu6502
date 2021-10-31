@@ -68,17 +68,13 @@ kDebugFlags operator |= (kDebugFlags &lhs, kDebugFlags rhs) {
 // ================
 
 
-CPU::CPU() : ram(nullptr), mstatus(0) {
+CPU::CPU(Memory &mem) : memory(mem), mstatus(0) {
     InitializeOpGroup00();
     InitializeOpGroup01();
     InitializeOpGroup10();
 }
 void CPU::Initialize() {
-    if (ram != nullptr) {
-        free(ram);
-    }
-    ram = (uint8_t *)malloc(MAX_RAM);
-    memset(ram, 0, MAX_RAM);
+
     ip = 0;
     sp = 0x1ff; // stack pointer, points to first available byte..
     //status = 0x00;
@@ -118,53 +114,14 @@ void CPU::Reset(uint32_t ipAddr) {
     mstatus.reset();
 }
 
-void CPU::Load(const uint8_t *from, uint32_t offset, uint32_t nbytes) {
+void CPU::Load(uint32_t offset, const uint8_t *from, uint32_t nbytes) {
     printf("Loading %d bytes to offset 0x%04x (%d)\n", nbytes, offset, offset);
-    memcpy(&ram[offset], from, nbytes);
+    memory.CopyTo(offset, from, nbytes);
+    //memcpy(&ram[offset], from, nbytes);
 }
 
 bool CPU::Step() {
-    bool res = true;
-
     return TryDecode();
-
-    // TODO: Static cast here is probably wrong...
-    CpuOperands opcode = static_cast<CpuOperands>(Fetch8());
-    if (instructions.find(opcode) != instructions.end()) {
-        instructions[opcode].exec();
-    } else {
-        switch (opcode) {
-            case CpuOperands::BRK :
-                res = false;
-                SetStepResult("BRK");
-                break;
-            case CpuOperands::NOP :
-                // Do nothing...
-                SetStepResult("NOP");
-                break;
-            default:
-                SetStepResult("ERR: Unknown OPCode $%02x at address $%04x", opcode, ip-1);
-                res = false;
-        }
-    }
-
-//    kDebugFlags testFlags = kDebugFlags::kDbg_StepDisAsm | kDebugFlags::kDbg_StepCPUReg;
-//    if (testFlags & kDebugFlags::kDbg_StepCPUReg) {
-//        printf(":WEfwefwefwef'\n");
-//    }
-
-    if((debugFlags & kDebugFlags::StepDisAsm) == kDebugFlags::StepDisAsm) {
-        printf("%s\n", lastStepResult.c_str());
-    }
-    if ((debugFlags & kDebugFlags::StepCPUReg) == kDebugFlags::StepCPUReg) {
-        printf("ADDR AR XR YR SP 01 NV-BDIZC\n");
-        printf("%04x %02x %02x %02x %02x %02x %s\n",
-               ip, reg_a, reg_x, reg_y, sp & 0xff, ReadU8(0x01), ToBinaryU8(mstatus.raw()).c_str());
-
-        // Make this line optional..
-        printf("\n");
-    }
-    return res;
 }
 
 
@@ -1057,31 +1014,32 @@ uint16_t CPU::Pop16() {
 
 
 uint8_t CPU::ReadU8(uint32_t index) {
+    uint8_t val = memory.ReadU8(index);
     if((debugFlags & kDebugFlags::MemoryRead) == kDebugFlags::MemoryRead) {
-        printf("[CPU] Read8 0x%02x from ofs: 0x%04x (%d)\n", ram[index], index, index);
+        printf("[CPU] Read8 0x%02x from ofs: 0x%04x (%d)\n", val, index, index);
     }
-    return ram[index];
+    return val;
 }
 uint16_t CPU::ReadU16(uint32_t index) {
-    auto ptr = reinterpret_cast<uint16_t *>(&ram[index]);
+    uint16_t val = memory.ReadU16(index);
     if((debugFlags & kDebugFlags::MemoryRead) == kDebugFlags::MemoryRead) {
-        printf("[CPU] Read16  0x%04x from ofs: 0x%04x (%d)\n", *ptr, index, index);
+        printf("[CPU] Read16  0x%04x from ofs: 0x%04x (%d)\n",  val, index, index);
     }
-    return *ptr;
+    return val;
 }
 uint32_t CPU::ReadU32(uint32_t index) {
-    auto ptr = reinterpret_cast<uint32_t *>(&ram[index]);
+    uint32_t val = memory.ReadU32(index);
     if((debugFlags & kDebugFlags::MemoryRead) == kDebugFlags::MemoryRead) {
-        printf("[CPU] Read32 0x%08x from ofs: 0x%04x (%d)\n", *ptr, index, index);
+        printf("[CPU] Read32 0x%08x from ofs: 0x%04x (%d)\n", val, index, index);
     }
-    return *ptr;
+    return val;
 }
 
 void CPU::WriteU8(uint32_t index, uint8_t value) {
     if((debugFlags & kDebugFlags::MemoryWrite) == kDebugFlags::MemoryWrite) {
         printf("[CPU] WriteU8 0x%02x to ofs: 0x%04x (%d)\n", value, index, index);
     }
-    ram[index] = value;
+    memory.WriteU8(index, value);
 }
 
 
@@ -1089,16 +1047,14 @@ void CPU::WriteU16(uint32_t index, uint16_t value) {
     if((debugFlags & kDebugFlags::MemoryWrite) == kDebugFlags::MemoryWrite) {
         printf("[CPU] WriteU16 0x%04x to ofs: 0x%04x (%d)\n", value, index, index);
     }
-    auto *ptr = reinterpret_cast<uint16_t *>(&ram[index]);
-    *ptr = value;
+    memory.WriteU16(index, value);
 }
 
 void CPU::WriteU32(uint32_t index, uint32_t value) {
     if((debugFlags & kDebugFlags::MemoryWrite) == kDebugFlags::MemoryWrite) {
         printf("[CPU] WriteU32 0x%08x to ofs: 0x%04x (%d)\n", value, index, index);
     }
-    auto *ptr = reinterpret_cast<uint32_t *>(&ram[index]);
-    *ptr = value;
+    memory.WriteU32(index, value);
 }
 
 // Prepare and solve addressing scheme...

@@ -13,8 +13,9 @@
 #include <bitset>
 #include <type_traits>
 
+#include "memory.h"
 
-#define MAX_RAM (64*1024)
+//#define MAX_RAM (64*1024)
 enum class CpuOperands : uint8_t {
     BRK = 0x00,
     PHP = 0x08,
@@ -167,6 +168,7 @@ enum class OperandAddrMode : uint8_t {
     Indirect     = 10,   // (....)
 };
 
+
 class CPU {
 public:
     using CPUInstruction = struct {
@@ -177,12 +179,12 @@ public:
         std::function<void()> exec;
     };
 public:
-    CPU();
+    CPU(Memory &mem);
     void Initialize();
     void Reset(uint32_t ipAddr);
-    void Load(const uint8_t *from, uint32_t offset, uint32_t nbytes);
+    void Load(uint32_t offset, const uint8_t *from, uint32_t nbytes);
     bool Step();
-    const uint8_t *RAMPtr() const { return ram; }
+    const uint8_t *RAMPtr() const { return memory.RawPtr(); }
 
     void SetDebug(kDebugFlags flag, bool enable);
 
@@ -245,7 +247,7 @@ private:
     uint32_t reg_x;
     uint32_t reg_y;
     // RAM Memory
-    uint8_t *ram;
+    Memory &memory;
 
     // Not releated to 6502
     kDebugFlags debugFlags;

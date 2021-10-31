@@ -26,9 +26,10 @@ add_custom_target(c64binary ALL DEPENDS ${C64BINARY})
 # Create the EMU target
 #
 list(APPEND src src/cpu.cpp src/cpu.h)
+#list(APPEND src src/.cpp src/cpu.h)
 list(APPEND src src/main.cpp)
 
-add_executable(emu6502 ${src})
+add_executable(emu6502 ${src} src/Memory.h src/Memory.cpp)
 
 # Let it depend on the test program binary...
 add_dependencies(emu6502 c64binary)

@@ -65,7 +65,7 @@ static uint16_t LoadPRG(const std::string &filename, CPU &cpu) {
     fread(buffer, szfile-2, 1, f);
     fclose(f);
 
-    cpu.Load(buffer, offset, szfile-2);
+    cpu.Load(offset, buffer, szfile-2);
     return offset;
 }
 
@@ -76,7 +76,9 @@ static uint8_t bincode[]={
 };
 
 int main(int argc, char **argv) {
-    CPU cpu;
+    Memory memory;          // Initialize memory with default size (64k)
+    CPU cpu(memory);     // Initialize CPU with memory object (linking RAM and CPU together)
+
     cpu.Initialize();
 
     uint16_t offset = 0;
@@ -88,7 +90,7 @@ int main(int argc, char **argv) {
             return 0;
         }
     } else {
-        cpu.Load(bincode, offset, sizeof(bincode));
+        cpu.Load(offset, bincode, sizeof(bincode));
     }
 
     // Reset CPU and set instruction pointer offset..
@@ -96,10 +98,10 @@ int main(int argc, char **argv) {
     cpu.SetDebug(kDebugFlags::StepDisAsm, true);
     cpu.SetDebug(kDebugFlags::StepCPUReg, true);
     //cpu.SetDebug(kDebugFlags::MemoryRead, true);
-    HexDump(cpu.RAMPtr(), 0x4100, 16);
+    HexDump(memory.RawPtr(), 0x4100, 16);
     while(cpu.Step()) {
-        HexDump(cpu.RAMPtr(), 0x4100, 16);
+        HexDump(memory.RawPtr(), 0x4100, 16);
     }
-    HexDump(cpu.RAMPtr(), 0x4100, 16);
+    HexDump(memory.RawPtr(), 0x4100, 16);
     return 0;
 }
