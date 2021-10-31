@@ -80,7 +80,21 @@ static uint8_t bincode[]={
 };
 
 static void testui() {
+
     ui_initialize();
+
+    ImGuiIO& io = ImGui::GetIO();
+    // Add the default
+    io.Fonts->AddFontDefault();
+    // Now load a new one..
+    ImFontConfig config;
+    config.OversampleH = 3;
+    config.OversampleV = 1;
+    config.PixelSnapH = true;
+    config.GlyphExtraSpacing.x = -8;
+    config.MergeMode = false;
+    ImFont* font1 = io.Fonts->AddFontFromFileTTF("assets/PetMe64.ttf", 12, &config);
+
 
     bool done = false;
     while(!done) {
@@ -88,7 +102,13 @@ static void testui() {
         done = ui_beginframe();
         if (done) continue;
         ImGui::Begin("TEXT");
-        ImGui::SetWindowSize({640,480});
+        ImGui::SetWindowSize({512,480});
+
+        //
+        // This is just testing, the VIC should generate a bit map and we should show that bitmap...
+        // Once the VIC has finished a complete redraw...
+        //
+        ImGui::PushFont(font1);
         for(int y=0;y<25;y++) {
             for (int x = 0; x < 40; x++) {
                 ImGui::SameLine();
@@ -96,6 +116,8 @@ static void testui() {
             }
             ImGui::NewLine();
         }
+        ImGui::PopFont();
+
         ImGui::End();
 
         ui_endframe();
@@ -108,8 +130,8 @@ static void testui() {
 
 int main(int argc, char **argv) {
 
-    testui();
-    return 1;
+//    testui();
+//    return 1;
 
     Memory memory;          // Initialize memory with default size (64k)
     CPU cpu(memory);     // Initialize CPU with memory object (linking RAM and CPU together)
@@ -134,6 +156,7 @@ int main(int argc, char **argv) {
     cpu.SetDebug(kDebugFlags::StepCPUReg, true);
     //cpu.SetDebug(kDebugFlags::MemoryRead, true);
     HexDump(memory.RawPtr(), 0x4100, 16);
+    // This takes one CPU step...
     while(cpu.Step()) {
         HexDump(memory.RawPtr(), 0x4100, 16);
     }

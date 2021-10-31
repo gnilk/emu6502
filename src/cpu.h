@@ -186,6 +186,7 @@ public:
     void Reset(uint32_t ipAddr);
     void Load(uint32_t offset, const uint8_t *from, uint32_t nbytes);
     bool Step();
+    void Tick();
     const uint8_t *RAMPtr() const { return memory.RawPtr(); }
 
     void SetDebug(kDebugFlags flag, bool enable);
@@ -242,14 +243,16 @@ private:
 
 
 private:
+    Memory &memory;
     CpuFlags mstatus;
+    uint8_t instrCycleCount;
+
     uint32_t ip;    // instruction pointer, index in RAM
     uint32_t sp;    // stack point, index in RAM
     int32_t reg_a;
     uint32_t reg_x;
     uint32_t reg_y;
     // RAM Memory
-    Memory &memory;
 
     // Not releated to 6502
     kDebugFlags debugFlags;

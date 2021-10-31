@@ -63,6 +63,8 @@ if (WIN32)
 elseif(APPLE)
     # TODO
 endif()
+
+
 #
 # Create the EMU target
 #
@@ -72,5 +74,12 @@ target_link_libraries(emu6502 ${libs})
 target_include_directories(emu6502 PUBLIC ext/imgui/)
 target_include_directories(emu6502 PUBLIC ext/imgui/backends)
 
-# Let it depend on the test program binary...
+add_custom_command(TARGET emu6502 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets/ $<TARGET_FILE_DIR:emu6502>
+        COMMENT "Copying assets files...."
+        VERBATIM)
+
+
+        # Let it depend on the test program binary...
 add_dependencies(emu6502 c64binary)

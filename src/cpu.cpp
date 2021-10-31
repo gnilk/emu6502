@@ -2,6 +2,7 @@
 // Simple 6502 CPU Emulator
 //
 // TODO:
+//   - Add cycles to each operand...
 //   - Overflow ('V') flags is not implemented
 //   - Consider using a 'Tick' based system instead which would add support for peripherals (VIC, SID) and enable them to be cycle exact..
 //   - Implement decimal mode
@@ -68,7 +69,7 @@ kDebugFlags operator |= (kDebugFlags &lhs, kDebugFlags rhs) {
 // ================
 
 
-CPU::CPU(Memory &mem) : memory(mem), mstatus(0) {
+CPU::CPU(Memory &mem) : memory(mem), mstatus(0),instrCycleCount(0) {
     InitializeOpGroup00();
     InitializeOpGroup01();
     InitializeOpGroup10();
@@ -118,6 +119,14 @@ void CPU::Load(uint32_t offset, const uint8_t *from, uint32_t nbytes) {
     printf("Loading %d bytes to offset 0x%04x (%d)\n", nbytes, offset, offset);
     memory.CopyTo(offset, from, nbytes);
     //memcpy(&ram[offset], from, nbytes);
+}
+
+// Ticks a single clock cycle
+void CPU::Tick() {
+    if (!instrCycleCount) {
+        Step();
+    }
+    instrCycleCount-=1;
 }
 
 bool CPU::Step() {
@@ -236,9 +245,16 @@ static OperandGroup opGroup00={
 
 bool CPU::TryDecode() {
     auto ipCurrent = ip;
+
     if (!TryDecodeInternal()) {
         return false;
     }
+
+    // Unless set by decoder - we enfore the cycles of this instruction...
+    if (!instrCycleCount) {
+        instrCycleCount = 3;    // TODO: Let each instruction define this value... it's foremost a result of addressing...
+    }
+
 
     if((debugFlags & kDebugFlags::StepDisAsm) == kDebugFlags::StepDisAsm) {
         printf("$%04x    %s\n", ipCurrent, lastStepResult.c_str());
@@ -258,10 +274,10 @@ bool CPU::TryDecode() {
 // More generic 6502 disassembler code
 //
 bool CPU::TryDecodeInternal() {
-    bool res = true;
-
     uint8_t incoming = Fetch8();
-    printf("%02x\n",incoming);
+
+    //printf("%02x\n",incoming);
+
     if (incoming == 0x00) return false;
 
     // Handle instructions which are a bit odd...
@@ -885,7 +901,7 @@ bool CPU::TryDecodeLeftovers(uint8_t incoming) {
     }
 
     auto op = opSpecial[incoming];
-    printf("Special: 0x%02x -> %s\n", incoming, op.name.c_str());
+    //printf("Special: 0x%02x -> %s\n", incoming, op.name.c_str());
     switch(static_cast<CpuOperands>(incoming)) {
         case CpuOperands::JSR : {
                 uint16_t ofs = Fetch16();
