@@ -1,5 +1,6 @@
     * = $4000 "main"
 start:
+    nop
     ldy #$40
     sty $4100
     ldy #$00

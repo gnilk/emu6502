@@ -233,17 +233,6 @@ static OperandGroup opGroup00={
         }
 };
 
-struct OperandSpecial {
-    uint8_t size;
-    std::string name;
-    // TODO: Add lambda here???
-};
-
-static std::map<uint8_t, OperandSpecial> opSpecial={
-        { 0x20, { .size = 3, .name = "JSR" }},
-        { 0x40, { .size = 1, .name = "RTI" }},
-        { 0x60, { .size = 1, .name = "RTS" }}
-};
 
 bool CPU::TryDecode() {
     auto ipCurrent = ip;
@@ -282,10 +271,10 @@ bool CPU::TryDecodeInternal() {
     if (TryDecodeBranches(incoming)) {
         return true;
     }
-    if (TryDecodeOpGroup(incoming)) {
+    if (TryDecodeLeftovers(incoming)) {
         return true;
     }
-    if (TryDecodeLeftovers(incoming)) {
+    if (TryDecodeOpGroup(incoming)) {
         return true;
     }
 
@@ -302,20 +291,6 @@ bool CPU::TryDecodeOddities(uint8_t incoming) {
     }
 
     if ((incoming & 0x10) == 0x10) {
-        // clear flags
-//        static std::string names[]={"CLC","SEC","CLI","SEI","TYA","CLV","CLD","SED"};
-//        static CpuOperands opcodes[]={
-//                CpuOperands::CLC,
-//                CpuOperands::SEC,
-//                CpuOperands::CLI,
-//                CpuOperands::SEI,
-//                CpuOperands::TYA,
-//                CpuOperands::CLV,
-//                CpuOperands::CLD,
-//                CpuOperands::SED};
-//
-//        auto idxInstr = incoming >> 5;
-//        printf("%s, idx: %d (%02x)\n", names[idxInstr].c_str(), idxInstr, idxInstr);
         switch(static_cast<CpuOperands>(incoming)) {
             case CpuOperands::CLC :
                 mstatus.set(CpuFlag::Carry, false);
@@ -413,7 +388,7 @@ bool CPU::TryDecodeOddities(uint8_t incoming) {
         }
         return true;
     }
-    return false;
+     return false;
 }
 // 189, 0xbd, %010111101
 // 16, 0x10,  %000010000
@@ -882,6 +857,26 @@ bool CPU::TryDecodeOpGroup(uint8_t incoming) {
     }
     return true;
 }
+struct OperandSpecial {
+    uint8_t size;
+    std::string name;
+    // TODO: Add lambda here???
+};
+
+static std::map<uint8_t, OperandSpecial> opSpecial={
+        { 0x20, { .size = 3, .name = "JSR"}},
+        { 0x40, { .size = 1, .name = "RTI"}},
+        { 0x60, { .size = 1, .name = "RTS"}},
+        { 0xea, { .size = 1, .name = "NOP"}},
+        { 0x8a, { .size = 1, .name = "TXA"}},
+        { 0x9a, { .size = 1, .name = "TXS"}},
+        { 0xaa, { .size = 1, .name = "TAX"}},
+        { 0xba, { .size = 1, .name = "TSX"}},
+        { 0xca, { .size = 1, .name = "DEX"}},
+
+
+};
+
 bool CPU::TryDecodeLeftovers(uint8_t incoming) {
 
     // Handle left overs
@@ -890,27 +885,61 @@ bool CPU::TryDecodeLeftovers(uint8_t incoming) {
     }
 
     auto op = opSpecial[incoming];
-    printf("%s\n", op.name.c_str());
+    printf("Special: 0x%02x -> %s\n", incoming, op.name.c_str());
     switch(static_cast<CpuOperands>(incoming)) {
         case CpuOperands::JSR : {
-            uint16_t ofs = Fetch16();
-            uint16_t ipReturn = ip;
-            SetStepResult("JSR $%04x", ofs);
-            ip = ofs;
-            Push16(ipReturn);
-        }
-        break;
+                uint16_t ofs = Fetch16();
+                uint16_t ipReturn = ip;
+                SetStepResult("JSR $%04x", ofs);
+                ip = ofs;
+                Push16(ipReturn);
+            }
+            break;
         case CpuOperands::RTS : {
-            uint16_t ofs = Pop16();
-            SetStepResult("RTS  (* -> $%04x)", ofs);
-            ip = ofs;
-        }
-        break;
+                uint16_t ofs = Pop16();
+                SetStepResult("RTS  (* -> $%04x)", ofs);
+                ip = ofs;
+            }
+            break;
         case CpuOperands::RTI : {
-            printf("RTI not supported!!!!!!!!!!!!!!!!!!\n");
-            exit(1);
-        }
-        break;
+                printf("RTI not supported!!!!!!!!!!!!!!!!!!\n");
+                exit(1);
+            }
+            break;
+        case CpuOperands::NOP : {
+                SetStepResult("NOP");
+            }
+            break;
+        case CpuOperands::TXA : {
+                SetStepResult("TXA");
+                reg_a = reg_x;
+                RefreshStatusFromValue(reg_a);
+            }
+            break;
+        case CpuOperands::TXS : {
+                SetStepResult("TXS");
+                sp = reg_x;
+            }
+            break;
+        case CpuOperands::TAX : {
+                SetStepResult("TAX");
+                reg_x = reg_x;
+                RefreshStatusFromValue(reg_x);
+            }
+            break;
+        case CpuOperands::TSX : {
+                SetStepResult("TSX");
+                reg_x = sp;
+                RefreshStatusFromValue(reg_x);
+            }
+            break;
+        case CpuOperands::DEX : {
+                reg_x = reg_x - 1;
+                reg_x = reg_x & 255;
+                SetStepResult("DEX");
+                RefreshStatusFromValue(reg_x);
+            }
+            break;
     }
     return true;
 }
