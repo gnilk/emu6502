@@ -3,6 +3,7 @@ project(emu6502)
 
 set(CMAKE_CXX_STANDARD 20)
 
+include(CheckIncludeFile)
 
 # this compiles the c64 binary through kick-assembler...
 set(C64BINARY "c64/bin/test.prg")
@@ -23,13 +24,53 @@ endif()
 add_custom_target(c64binary ALL DEPENDS ${C64BINARY})
 
 #
-# Create the EMU target
+# main emu6502 src
 #
+
 list(APPEND src src/cpu.cpp src/cpu.h)
-#list(APPEND src src/.cpp src/cpu.h)
+list(APPEND src src/memory.cpp src/memory.h)
 list(APPEND src src/main.cpp)
 
-add_executable(emu6502 ${src} src/Memory.h src/Memory.cpp)
+
+#
+# Imgui src
+#
+list(APPEND imgui ext/imgui/imgui.cpp ext/imgui/imgui.h)
+list(APPEND imgui ext/imgui/imconfig.h)
+list(APPEND imgui ext/imgui/imgui_demo.cpp)
+list(APPEND imgui ext/imgui/imgui_draw.cpp)
+list(APPEND imgui ext/imgui/imgui_tables.cpp)
+list(APPEND imgui ext/imgui/imgui_widgets.cpp)
+
+list(APPEND libs "")
+
+if (WIN32)
+    list(APPEND src src/Win32/ui.cpp)
+
+    check_include_file(d3d10.h HAS_D3D10)
+    if (HAS_D3D10)
+        list(APPEND imgui_backend ext/imgui/backends/imgui_impl_dx10.cpp)
+        list(APPEND imgui_backend ext/imgui/backends/imgui_impl_win32.cpp)
+
+
+        list(APPEND libs d3d10)
+#        target_link_libraries(imgui_backend INTERFACE imgui d3d10)
+ #       target_include_directories(imgui_backend INTERFACE ${IMGUI_BACKENDS_DIR})
+    else ()
+        message (STATUS "IMGUI_IMPL_DX10 set to ON but DirectX 10 could not be found.")
+    endif ()
+
+elseif(APPLE)
+    # TODO
+endif()
+#
+# Create the EMU target
+#
+
+add_executable(emu6502 ${src} ${imgui} ${imgui_backend} src/Win32/ui.cpp)
+target_link_libraries(emu6502 ${libs})
+target_include_directories(emu6502 PUBLIC ext/imgui/)
+target_include_directories(emu6502 PUBLIC ext/imgui/backends)
 
 # Let it depend on the test program binary...
 add_dependencies(emu6502 c64binary)

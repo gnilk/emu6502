@@ -6,12 +6,16 @@
 #include <cstdio>
 #include <string>
 #include <cstdarg>
+#include "imgui.h"
 
 #include "cpu.h"
 
 static void HexDump(const uint8_t *ptr, size_t ofs, size_t len);
 
-
+extern int ui_initialize();
+extern bool ui_beginframe();
+extern void ui_endframe();
+extern void ui_close();
 
 
 static void HexDump(const uint8_t *ptr, size_t ofs, size_t len) {
@@ -75,7 +79,38 @@ static uint8_t bincode[]={
         0x00,
 };
 
+static void testui() {
+    ui_initialize();
+
+    bool done = false;
+    while(!done) {
+
+        done = ui_beginframe();
+        if (done) continue;
+        ImGui::Begin("TEXT");
+        ImGui::SetWindowSize({640,480});
+        for(int y=0;y<25;y++) {
+            for (int x = 0; x < 40; x++) {
+                ImGui::SameLine();
+                ImGui::Text("%c", 'A'+y);
+            }
+            ImGui::NewLine();
+        }
+        ImGui::End();
+
+        ui_endframe();
+
+    }
+    printf("ui end loop\n");
+
+    ui_close();
+}
+
 int main(int argc, char **argv) {
+
+    testui();
+    return 1;
+
     Memory memory;          // Initialize memory with default size (64k)
     CPU cpu(memory);     // Initialize CPU with memory object (linking RAM and CPU together)
 
