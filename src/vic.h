@@ -20,10 +20,10 @@ typedef struct {
 
 #pragma pack(push, 1)
 typedef struct {
-    uint8_t YScroll : 3;
-    uint8_t RSEL : 1;
-    uint8_t DEN : 1;
-    uint8_t BMM : 1;
+    uint8_t YScroll : 3;    // 0..7
+    uint8_t RSEL : 1;   // Row Select
+    uint8_t DEN : 1;    // Display ENable
+    uint8_t BMM : 1;    //
     uint8_t ECM : 1;
     uint8_t RST8 : 1;
 } VICRegControl1;
@@ -87,6 +87,8 @@ private:
 
     bool IsInVerticalBorder();
     bool IsVBL();
+    bool IsBadLine();
+    void HandleBadLine();
     void UpdateHorizontalState();
     void UpdateVerticalState();
     void RenderToScreen();
@@ -98,10 +100,14 @@ private:
     uint32_t rasterX;
     RasterYState rasterYState;
     RasterXState rasterXState;
+    uint16_t videoMatrixAddress;
+    uint32_t videoMatrixCounter;
 private:
+    bool cpuStunned;
+    uint8_t stunCycleCount;
     uint8_t chars[40];      // bad-line cache
 private:
-    uint32_t row;
+    uint32_t videoRowCounter;
 private:
 
 };

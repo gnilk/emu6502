@@ -202,6 +202,20 @@ static void testui() {
 }
 
 int main(int argc, char **argv) {
+//#define M_PI 3.1415
+//
+//    printf("!byte    ");
+//    for(int i=0;i<256;i++) {
+//        uint8_t v = (uint8_t )(0x60 + 0x10 * sin(i * 2.0 * M_PI / 256.0f));
+//        printf("$%02x",v);
+//        if ((i  & 15) == 15) {
+//            printf("\n");
+//            printf("!byte    ");
+//        } else {
+//            printf(",");
+//        }
+//    }
+//    exit(1);
 
     testui();
     return 1;
