@@ -7,10 +7,19 @@
 #include <string>
 #include <cstdarg>
 #include "imgui.h"
+#include "Pixmap.h"
 
+#include "vic.h"
 #include "cpu.h"
 
 static void HexDump(const uint8_t *ptr, size_t ofs, size_t len);
+
+void *ui_locktexture(int idTexture);
+void ui_unlocktexture(int idTexture);
+
+extern void *ui_gettexturehandle(int idText);
+extern int ui_createtexture(size_t width, size_t height);
+extern void ui_updatetexture(int idTexture, const void *ptrData, const size_t width, const size_t height);
 
 extern int ui_initialize();
 extern bool ui_beginframe();
@@ -79,9 +88,35 @@ static uint8_t bincode[]={
         0x00,
 };
 
+
+static void renderVICStats(const VIC &videochip) {
+
+    static auto rx = videochip.RasterX();
+    static auto ry = videochip.RasterY();
+
+    ImGui::Begin("VIC");
+    ImGui::SetWindowSize({512,480});
+
+    ImGui::Text("RasterX: %d", rx);
+    ImGui::Text("RasterY: %d", ry);
+    ImGui::End();
+}
+
+
 static void testui() {
 
+    Memory memory;          // Initialize memory with default size (64k)
+    VIC videoChip(memory);
+
+    videoChip.Tick();
     ui_initialize();
+
+    auto screenPmap = videoChip.Screen();
+
+    int idTexture = ui_createtexture(screenPmap.Width(),screenPmap.Height());
+    void *hTexture = ui_gettexturehandle(idTexture);
+
+
 
     ImGuiIO& io = ImGui::GetIO();
     // Add the default
@@ -96,14 +131,52 @@ static void testui() {
     ImFont* font1 = io.Fonts->AddFontFromFileTTF("assets/PetMe64.ttf", 12, &config);
 
 
+    static uint8_t rasterBar[]={
+            VIC::Black,
+            VIC::DarkGray,
+            VIC::MediumGray,
+            VIC::LightGray,
+            VIC::White,
+            VIC::LightGray,
+            VIC::MediumGray,
+            VIC::DarkGray,
+    };
     bool done = false;
     while(!done) {
 
         done = ui_beginframe();
         if (done) continue;
-        ImGui::Begin("TEXT");
-        ImGui::SetWindowSize({512,480});
+        for(int i=0;i<63*312;i++) {
+            videoChip.Tick();
+            // Test if the raster works
+            if ((memory[VIC::Raster] > 0x40)  && (memory[VIC::Raster] < 0x80)) {
+                uint8_t idxCol = memory[VIC::Raster] & 0x07;
+                memory[VIC::BorderCol] = rasterBar[idxCol];
+            }
+            if (memory[VIC::Raster] == 0xc0) {
+                memory[VIC::BorderCol] = VIC::LightBlue;
+            }
+        }
 
+        renderVICStats(videoChip);
+
+
+        ImGui::Begin("TEXT");
+        ImGui::SetWindowSize({512*2,480*2});
+
+        //void *ptrData = ui_locktexture(idTexture);
+
+        //Pixmap pmap(ptrData, 256, 256);
+//        pmap.Clear(Pixmap::Black);
+//        auto x = (int)(128+128 * sin(ImGui::GetTime()));
+//        pmap.PutPixel(x, 128, Pixmap::White);
+
+        ui_updatetexture(idTexture, screenPmap.Data(), screenPmap.Width(), screenPmap.Height());
+        //ui_unlocktexture(idTexture);
+
+        ImGui::Image(hTexture, ImVec2(screenPmap.Width()*2,screenPmap.Height()*2));
+
+/*
         //
         // This is just testing, the VIC should generate a bit map and we should show that bitmap...
         // Once the VIC has finished a complete redraw...
@@ -117,7 +190,7 @@ static void testui() {
             ImGui::NewLine();
         }
         ImGui::PopFont();
-
+*/
         ImGui::End();
 
         ui_endframe();
@@ -130,8 +203,8 @@ static void testui() {
 
 int main(int argc, char **argv) {
 
-//    testui();
-//    return 1;
+    testui();
+    return 1;
 
     Memory memory;          // Initialize memory with default size (64k)
     CPU cpu(memory);     // Initialize CPU with memory object (linking RAM and CPU together)

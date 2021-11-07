@@ -9,9 +9,12 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx10.h"
+
 #include <d3d10_1.h>
 #include <d3d10.h>
 #include <tchar.h>
+#include <cstdio>
+#include <stdint.h>
 
 // Data
 static ID3D10Device*            g_pd3dDevice = NULL;
@@ -32,6 +35,124 @@ static bool show_another_window = false;
 static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 static HWND hwnd;
 static WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("ImGui Example"), NULL };
+
+#define MAX_TEXTURES 10
+static int nTextures = 0;
+
+    static ID3D10Texture2D *textures[MAX_TEXTURES] = {nullptr};
+static ID3D10ShaderResourceView *resourceViews[MAX_TEXTURES] = {nullptr};
+
+static void errx(HRESULT res) {
+    char *lpBuf;
+    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                  FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                  NULL, res, 0, (LPTSTR)&lpBuf, 0, NULL);
+    printf("ERR: %s\n",lpBuf);
+    exit(1);
+
+}
+
+void *ui_gettexturehandle(int idTexture) {
+    return resourceViews[idTexture];
+}
+
+void *ui_locktexture(int idTexture) {
+    ID3D10Texture2D *pTexture = textures[idTexture];
+    assert(pTexture != nullptr);
+
+    D3D10_MAPPED_TEXTURE2D mappedTex;
+    pTexture->Map( D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex );
+
+    return mappedTex.pData;
+}
+void ui_unlocktexture(int idTexture) {
+    ID3D10Texture2D *pTexture = textures[idTexture];
+    assert(pTexture != nullptr);
+
+    pTexture->Unmap( D3D10CalcSubresource(0, 0, 1) );
+}
+
+void ui_updatetexture(int idTexture, const void *ptrData, const size_t width, const size_t height) {
+    ID3D10Texture2D *pTexture = textures[idTexture];
+    assert(pTexture != nullptr);
+
+    D3D10_TEXTURE2D_DESC desc;
+    pTexture->GetDesc(&desc);
+    if (desc.Width != width) return;
+    if (desc.Height != height) return;
+
+    D3D10_MAPPED_TEXTURE2D mappedTex;
+    pTexture->Map( D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex );
+
+    uint8_t *pDest = reinterpret_cast<uint8_t *>(mappedTex.pData);
+    const uint8_t *pSrc = reinterpret_cast<const uint8_t *>(ptrData);
+
+    for(size_t i = 0; i<height;i++) {
+        memcpy(&pDest[i * mappedTex.RowPitch], &pSrc[4 * i * width], sizeof(uint32_t) * width);
+    }
+
+    pTexture->Unmap( D3D10CalcSubresource(0, 0, 1) );
+}
+
+int ui_createtexture(size_t width, size_t height) {
+
+    assert(g_pd3dDevice != nullptr);
+
+    D3D10_TEXTURE2D_DESC desc;
+    ZeroMemory( &desc, sizeof(desc) );
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D10_USAGE_DYNAMIC;
+    desc.BindFlags = D3D10_BIND_SHADER_RESOURCE;
+    desc.CPUAccessFlags = D3D10_CPU_ACCESS_WRITE;
+
+    ID3D10Texture2D *pTexture;
+
+    auto res = g_pd3dDevice->CreateTexture2D( &desc, NULL, &pTexture );
+    if (FAILED(res)) {
+        errx(res);
+    }
+    textures[nTextures] = pTexture;
+
+    // Create texture view
+    D3D10_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    ZeroMemory(&srv_desc, sizeof(srv_desc));
+    srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srv_desc.ViewDimension = D3D10_SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Texture2D.MipLevels = desc.MipLevels;
+    srv_desc.Texture2D.MostDetailedMip = 0;
+
+    ID3D10ShaderResourceView *pTextureView;
+    g_pd3dDevice->CreateShaderResourceView(pTexture, &srv_desc, &pTextureView);
+    //pTexture->Release();
+    resourceViews[nTextures] = pTextureView;
+
+
+    D3D10_MAPPED_TEXTURE2D mappedTex;
+    pTexture->Map( D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex );
+
+    UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+    for( UINT row = 0; row < desc.Height; row++ )
+    {
+        UINT rowStart = row * mappedTex.RowPitch;
+        for( UINT col = 0; col < desc.Width; col++ )
+        {
+            UINT colStart = col * 4;
+            pTexels[rowStart + colStart + 0] = 255; // Red
+            pTexels[rowStart + colStart + 1] = 128; // Green
+            pTexels[rowStart + colStart + 2] = 64;  // Blue
+            pTexels[rowStart + colStart + 3] = 255;  // Alpha
+        }
+    }
+
+    pTexture->Unmap( D3D10CalcSubresource(0, 0, 1) );
+
+    return nTextures;
+}
+
 
 int ui_initialize() {
     // Create application window
